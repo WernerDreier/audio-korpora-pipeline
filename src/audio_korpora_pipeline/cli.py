@@ -8,7 +8,6 @@ import logging
 import os
 import sys
 
-from audio_korpora_pipeline import Audiokorporapipeline
 from inputadapter.adapters import ArchimobAdapter, CommonVoiceAdapter
 
 
@@ -74,9 +73,6 @@ def main():
   config = __load_config(config_path)
 
   __config_logging(__load_config(config_path))
-
-  t = Audiokorporapipeline(config_path)
-  t.fancy_function()
 
   adapter = ArchimobAdapter(config)
   adapter.toMetamodel()
