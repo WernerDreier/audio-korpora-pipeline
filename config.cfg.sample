@@ -1,0 +1,9 @@
+[audio_korpora_pipeline]
+somekey = someval
+
+[logging]
+file = log.log
+file_level = DEBUG
+stdout_level = DEBUG
+stdout_fmt = %(levelname)-8s: %(message)s   |%(pathname)s Line %(lineno)d|
+file_fmt = %(asctime)s %(levelname)-8s: %(message)s   |%(pathname)s Line %(lineno)d|

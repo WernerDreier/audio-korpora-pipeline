@@ -1,3 +1,0 @@
-import corpus
-
-abc = SpeechCorpus()

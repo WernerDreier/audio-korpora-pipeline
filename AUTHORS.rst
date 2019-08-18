@@ -1,0 +1,5 @@
+============
+Contributors
+============
+
+* Werner Dreier <***REMOVED***>
