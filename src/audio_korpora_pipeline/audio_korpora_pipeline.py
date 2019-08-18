@@ -3,6 +3,7 @@
 import configparser
 import logging
 import os
+from enum import Enum
 
 
 class Audiokorporapipeline:
@@ -36,3 +37,12 @@ class Audiokorporapipeline:
     self.logger.debug("hello wolrd")
 
     pass
+
+
+class ExistingInputAdapter(Enum):
+  COMMON_VOICE = 1
+  ARCHIMOB = 2
+
+
+class ExistingOutputAdapter(Enum):
+  M_AILABS = 1
