@@ -5,8 +5,7 @@
 
 from setuptools import setup, find_packages
 
-
-requirements = []
+requirements = ['SoundFile==0.10.2']
 setup_requirements = ['pytest-runner']
 test_requirements = ['pytest']
 
@@ -14,13 +13,13 @@ setup(
     author="Werner Dreier",
     author_email='***REMOVED***',
     classifiers=[
-        'Programming Language :: Python :: 3.7',
+      'Programming Language :: Python :: 3.7',
     ],
     description="Pipeline for preprocessing audio-corpora for deeplearning such as M-AILABS, Common-Voice and others",
     entry_points={
-        'console_scripts': [
-            'audio_korpora_pipeline=audio_korpora_pipeline.cli:main',
-        ],
+      'console_scripts': [
+        'audio_korpora_pipeline=audio_korpora_pipeline.cli:main',
+      ],
     },
     install_requires=requirements,
     license="MIT license': 'License :: OSI Approved :: MIT License",

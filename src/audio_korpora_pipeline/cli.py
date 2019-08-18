@@ -9,6 +9,7 @@ import os
 import sys
 
 from inputadapter.adapters import ArchimobAdapter, CommonVoiceAdapter
+from utils import SoundfileService
 
 
 def __load_config(config_path):
@@ -79,6 +80,12 @@ def main():
 
   commonVoiceAdapter = CommonVoiceAdapter(config)
   commonVoiceAdapter.toMetamodel()
+
+  service = SoundfileService()
+  path = os.path.join(
+      "C:\\dev\datascience-repositories\\audio_korpora_pipeline\\tests\\resources\\korpora\\common_voice\\clips",
+      "00a3ad76df2f7adea1404370a96345b5474a7050c03a6a2118f97beb2f8cc87686cbee88304141b63a87432e88c43b475c844cffe05a2eff6f594c62f6d4edf3.mp3")
+  service.downsampleAlternative(path)
 
   return 0
 
