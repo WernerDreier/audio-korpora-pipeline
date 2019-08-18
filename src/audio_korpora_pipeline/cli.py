@@ -9,7 +9,7 @@ import os
 import sys
 
 from audio_korpora_pipeline import Audiokorporapipeline
-from inputadapter.adapters import ArchimobAdapter
+from inputadapter.adapters import ArchimobAdapter, CommonVoiceAdapter
 
 
 def __load_config(config_path):
@@ -71,13 +71,18 @@ def main():
   if not os.path.isfile(config_path):
     parser.print_help()
 
+  config = __load_config(config_path)
+
   __config_logging(__load_config(config_path))
 
   t = Audiokorporapipeline(config_path)
   t.fancy_function()
 
-  adapter = ArchimobAdapter(config_path)
+  adapter = ArchimobAdapter(config)
   adapter.toMetamodel()
+
+  commonVoiceAdapter = CommonVoiceAdapter(config)
+  commonVoiceAdapter.toMetamodel()
 
   return 0
 

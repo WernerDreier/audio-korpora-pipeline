@@ -51,3 +51,6 @@ MANIFEST
 # No real config
 config.cfg
 
+#testfiles datasources remove
+/tests/resources
+
