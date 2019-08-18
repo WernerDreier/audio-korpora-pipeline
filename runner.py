@@ -1,0 +1,3 @@
+import corpus
+
+abc = SpeechCorpus()
