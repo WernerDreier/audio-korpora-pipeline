@@ -24,22 +24,32 @@ class MediaAnnotationBundle(LoggingObject):
 class MediaFile(LoggingObject):
   TYPE_AUDIO = "audio"
 
-  def __init__(self):
+  def __init__(self, actorRef):
     # we only support audios
     self.type = self.TYPE_AUDIO
+    self.actorRef = actorRef
 
   def setActor(self, actor):
-    self.actor = actor
+    self.actorRef = actor
+
+
+class Language:
+  def __init__(self, languageCode):
+    self.ISO639 = languageCode
+    self.languageName = languageCode
 
 
 class WrittenResource(LoggingObject):
+  ORTHOGRAPHIC_TRANSCRIPTION = "Orthographic"
 
-  def __init__(self, filename):
-    self.name = filename
+  def __init__(self, transcription, actorRef, languageCode):
+    self.language = Language(languageCode)
+    self.name = transcription
+    self.actorRef = actorRef
+    self.annotationType = self.ORTHOGRAPHIC_TRANSCRIPTION
 
-  def setActor(self, actor):
-    self.actor = actor
+  def setActor(self, actorRef):
+    self.actorRef = actorRef
 
   def setLanguage(self, languageCode):
-    self.language.ISO639 = languageCode
-    self.language.languageName = languageCode
+    self.language = Language(languageCode)
