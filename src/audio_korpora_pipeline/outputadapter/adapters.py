@@ -24,8 +24,38 @@ class MailabsAdapter(Adapter):
     self._validateProcess(mediaSession)
 
   def _createFolderStructureAccordingToMailabs(self, mediaSession):
+    language_set = self._determineLanguages(mediaSession)
+    gender_set = self._determineGenders(mediaSession)
+    speaker_set = self._determineSpeakerIds(mediaSession)
+    bookname_mailabs = self._determineBookName(mediaSession)
     self.logger.debug("Starting prepare folderstructure mailabs")
     pass
+
+  def _determineLanguages(self, mediaSession):
+    languages = [(wr.language) for wr in
+                 (bundle.writtenResource for bundle in mediaSession.mediaAnnotationBundles if bundle.valid())]
+    language_set = set(languages)
+    self.logger.debug("Found {} Language(s) for MAILABS".format(len(language_set)))
+    return language_set
+
+  def _determineGenders(self, mediaSession):
+    actors = mediaSession.mediaSessionActors.mediaSessionActors
+    genders = [actor.sex for actor in actors]
+    gender_set = set(genders)
+    self.logger.debug("Found {} Gender(s) for MAILABS".format(len(gender_set)))
+    return gender_set
+
+  def _determineSpeakerIds(self, mediaSession):
+    actors = mediaSession.mediaSessionActors.mediaSessionActors
+    speakers = [actor.id for actor in actors]
+    speaker_set = set(speakers)
+    self.logger.debug("Found {} Speakers(s) for MAILABS".format(len(speaker_set)))
+    return speaker_set
+
+  def _determineBookName(self, mediaSession):
+    bookname = mediaSession.name
+    self.logger.debug("Bookname is {}".format(bookname))
+    return bookname
 
   def _createMetadatafiles(self, mediaSession):
     self.logger.debug("Starting metadatafile-creation mailabs")

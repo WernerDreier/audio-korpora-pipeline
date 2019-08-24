@@ -20,6 +20,8 @@ class MediaAnnotationBundle(LoggingObject):
 
   def __init__(self, identifier):
     self.identifier = identifier
+    self.writtenResource = None
+    self.mediaFile = None
 
   def setMediaFile(self, mediaFile):
     self.mediaFile = mediaFile
@@ -47,6 +49,15 @@ class Language(LoggingObject):
   def __init__(self, languageCode):
     self.ISO639 = languageCode
     self.languageName = languageCode
+
+  def __eq__(self, other):
+    if isinstance(other, Language):
+      return self.ISO639 == other.ISO639
+    else:
+      return False
+
+  def __hash__(self):
+    return hash(self.__repr__())
 
 
 class WrittenResource(LoggingObject):
@@ -78,9 +89,6 @@ class MediaSessionActor(LoggingObject):
     self.sex = sex
     if age is not None:
       self.age = age
-
-  def __repr__(self):
-    return "MediaSessionActor(%s, %s,%s)" % (self.id, self.sex, self.age)
 
   def __eq__(self, other):
     if isinstance(other, MediaSessionActor):

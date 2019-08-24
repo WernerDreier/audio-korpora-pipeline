@@ -17,3 +17,6 @@ class LoggingObject(object):
         klass=self.__class__.__name__,
         attrs=" ".join("{}={!r}".format(k, v) for k, v in self.__dict__.items()),
     )
+
+  def __hash__(self):
+    return hash(self.__repr__())
