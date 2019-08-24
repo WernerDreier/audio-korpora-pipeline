@@ -1,5 +1,9 @@
+import itertools
+import os
+
 from baseobjects import LoggingObject
 from metamodel.mediasession import MediaSession
+from utils import winapi_path
 
 
 class Adapter(LoggingObject):
@@ -11,6 +15,8 @@ class Adapter(LoggingObject):
 
 
 class MailabsAdapter(Adapter):
+  DEFAULT_OUTPUT_BASEPATH = os.path.relpath("output_MAILABS")
+
   def __init__(self, config):
     super(Adapter, self).__init__()
 
@@ -26,8 +32,10 @@ class MailabsAdapter(Adapter):
   def _createFolderStructureAccordingToMailabs(self, mediaSession):
     language_set = self._determineLanguages(mediaSession)
     gender_set = self._determineGenders(mediaSession)
-    speaker_set = self._determineSpeakerIds(mediaSession)
+    speaker_set = self._determineSpeaker(mediaSession)
     bookname_mailabs = self._determineBookName(mediaSession)
+
+    foldernames = self._generateFoldernames(language_set, gender_set, speaker_set, bookname_mailabs)
     self.logger.debug("Starting prepare folderstructure mailabs")
     pass
 
@@ -45,9 +53,9 @@ class MailabsAdapter(Adapter):
     self.logger.debug("Found {} Gender(s) for MAILABS".format(len(gender_set)))
     return gender_set
 
-  def _determineSpeakerIds(self, mediaSession):
+  def _determineSpeaker(self, mediaSession):
     actors = mediaSession.mediaSessionActors.mediaSessionActors
-    speakers = [actor.id for actor in actors]
+    speakers = [actor for actor in actors]
     speaker_set = set(speakers)
     self.logger.debug("Found {} Speakers(s) for MAILABS".format(len(speaker_set)))
     return speaker_set
@@ -68,3 +76,25 @@ class MailabsAdapter(Adapter):
   def _validateProcess(self, mediaSession):
     self.logger.debug("Validate mailabs")
     pass
+
+  def _generateFoldernames(self, language_set, gender_set, speaker_set, bookname_mailabs):
+    merged = list(itertools.chain.from_iterable([language_set, gender_set]))
+    possibleCombinationsOfLanguageAndGender = list(itertools.combinations(merged, 2))
+    combinationPath = [os.path.join(self.DEFAULT_OUTPUT_BASEPATH, combination[0].ISO639, "by_book", combination[1].name)
+                       for combination in
+                       possibleCombinationsOfLanguageAndGender]
+
+    # Loop through speakers and create final list of paths
+    finalPaths = []
+    for speaker in speaker_set:
+      for possiblePath in combinationPath:
+        if (speaker.sex.name == os.path.basename(possiblePath)):
+          actualFolder = os.path.join(possiblePath, speaker.id, bookname_mailabs)
+          # FIXME Windows hack problems on unix?
+          # see https://stackoverflow.com/questions/36219317/pathname-too-long-to-open/36219497
+          actualFolder = winapi_path(actualFolder)
+          finalPaths.append(actualFolder)
+          os.makedirs(actualFolder, exist_ok=True)
+
+    self.logger.debug("Found and created {} Outputpaths for MAILABS".format(len(finalPaths)))
+    return finalPaths
