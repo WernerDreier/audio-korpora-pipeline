@@ -13,12 +13,21 @@ class Adapter(LoggingObject):
   def fromMetamodel(self, mediaSession):
     raise NotImplementedError("Please use a subclass")
 
+  def _validateOutputPath(self):
+    outputPath = self.config['mailabs_output_adapter']['output_path']
+    if not os.path.isdir(outputPath):
+      raise IOError("Could not read korpus path" + outputPath)
+    return outputPath
+
 
 class MailabsAdapter(Adapter):
-  DEFAULT_OUTPUT_BASEPATH = os.path.relpath("output_MAILABS")
+
+  def _outputPath(self):
+    return os.path.join(self._validateOutputPath(), "output_MAILABS")
 
   def __init__(self, config):
-    super(Adapter, self).__init__()
+    super(MailabsAdapter, self).__init__(config=config)
+    self.config = config
 
   def fromMetamodel(self, mediaSession):
     if not isinstance(mediaSession, MediaSession):
@@ -80,7 +89,7 @@ class MailabsAdapter(Adapter):
   def _generateFoldernames(self, language_set, gender_set, speaker_set, bookname_mailabs):
     merged = list(itertools.chain.from_iterable([language_set, gender_set]))
     possibleCombinationsOfLanguageAndGender = list(itertools.combinations(merged, 2))
-    combinationPath = [os.path.join(self.DEFAULT_OUTPUT_BASEPATH, combination[0].ISO639, "by_book", combination[1].name)
+    combinationPath = [os.path.join(self._outputPath(), combination[0].ISO639, "by_book", combination[1].name)
                        for combination in
                        possibleCombinationsOfLanguageAndGender]
 
