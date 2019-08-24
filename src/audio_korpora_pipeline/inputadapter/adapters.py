@@ -1,3 +1,4 @@
+import json
 import os
 
 import pandas as pd
@@ -68,8 +69,6 @@ class CommonVoiceAdapter(Adapter):
         existing_audio_identifier, korpus_path)
 
     self._enrichWithTranscription(common_voice_valid_metadata)
-    # Actual json output
-    print(self.mediaAnnotationBundles[0].toJSON())
 
   def _enrichWithTranscription(self, common_voice_valid_metadata):
     # TODO will not be very performant
@@ -103,5 +102,9 @@ class CommonVoiceAdapter(Adapter):
   def _persistMetamodel(self):
     # TODO actual saving of working json
     # Actual json output
-    [print(x.toJSON() + ",") for x in self.mediaAnnotationBundles]
+
+    print(json.dumps(self.mediaAnnotationBundles,
+                     default=lambda o: o.__dict__,
+                     sort_keys=True, indent=4))
+
     pass
