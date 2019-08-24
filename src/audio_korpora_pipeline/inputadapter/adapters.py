@@ -4,8 +4,7 @@ import os
 import pandas as pd
 
 from baseobjects import LoggingObject
-from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, \
-  MediaFile
+from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile
 
 
 class Adapter(LoggingObject):
@@ -37,8 +36,8 @@ class CommonVoiceAdapter(Adapter):
     self.logger.debug("hello CommonVoice Adapter")
     korpus_path = self._validateKorpusPath()
 
-    self.audiofilenames = self._readExistingAudioFiles(korpus_path)
-    self.speakermetadata = self._readExistingSpeakerMetadata(korpus_path)
+    self.audiofilenames = self._readExistingAudioFiles()
+    self.speakermetadata = self._readExistingSpeakerMetadata()
 
     self._persistMetamodel()
 
@@ -50,31 +49,32 @@ class CommonVoiceAdapter(Adapter):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
-  def _readExistingAudioFiles(self, korpus_path):
-    fullpath = os.path.join(korpus_path, self.RELATIVE_PATH_TO_AUDIO)
+  def _existingAudioFileFullpath(self, filename):
+    return os.path.join(self._validateKorpusPath(), self.RELATIVE_PATH_TO_AUDIO, filename)
+
+  def _readExistingAudioFiles(self):
+    fullpath = os.path.join(self._validateKorpusPath(), self.RELATIVE_PATH_TO_AUDIO)
     for file in os.listdir(fullpath):
       if file.endswith(".mp3"):
-        currentfile = MediaAnnotationBundle(
-            self._getFilenameWithoutExtension(file))
+        currentfile = MediaAnnotationBundle(file)
         self.mediaAnnotationBundles.append(currentfile)
     self.logger.debug(
         "Found {} audiofiles to process".format(
             len(self.mediaAnnotationBundles)))
     pass
 
-  def _readExistingSpeakerMetadata(self, korpus_path):
-
+  def _readExistingSpeakerMetadata(self, ):
     existing_audio_identifier = self._getFilenamesFromMediaAnnotationBundles()
     common_voice_valid_metadata = self._getCommonVoiceValidMetadata(
-        existing_audio_identifier, korpus_path)
+        existing_audio_identifier, self._validateKorpusPath())
 
     self._enrichWithTranscription(common_voice_valid_metadata)
 
   def _enrichWithTranscription(self, common_voice_valid_metadata):
     # TODO will not be very performant
     for index, row in common_voice_valid_metadata.iterrows():
-      currentMediaAnnotationBundle = [a for a in self.mediaAnnotationBundles if
-                                      a.identifier == row.path]
+      currentMediaAnnotationBundle = [a for a in self.mediaAnnotationBundles if self._getFilenameWithoutExtension(
+          a.identifier) == row.path]
       currentMediaAnnotationBundle[0].setWrittenResource(
           WrittenResource(row.sentence, row.client_id, self.LANGUAGECODE_DE))
       currentMediaAnnotationBundle[0].setMediaFile(MediaFile(row.client_id))
@@ -83,13 +83,10 @@ class CommonVoiceAdapter(Adapter):
 
   def _getCommonVoiceValidMetadata(self, existing_audio_identifier,
       korpus_path):
-    commonvoice_valid_metadatafilenames = ["dev.tsv", "test.tsv", "train.tsv",
-                                           "validated.tsv"]
+    commonvoice_valid_metadatafilenames = ["dev.tsv", "test.tsv", "train.tsv", "validated.tsv"]
     combined_csv = pd.concat(
-        [pd.read_csv(os.path.join(korpus_path, f), sep="\t",
-                     header=0) for f in commonvoice_valid_metadatafilenames])
-    common_voice_valid_metadata = combined_csv[
-      combined_csv.path.isin(existing_audio_identifier)]
+        [pd.read_csv(os.path.join(korpus_path, f), sep="\t", header=0) for f in commonvoice_valid_metadatafilenames])
+    common_voice_valid_metadata = combined_csv[combined_csv.path.isin(existing_audio_identifier)]
     return common_voice_valid_metadata
 
   def _getFilenamesFromMediaAnnotationBundles(self):
@@ -103,8 +100,6 @@ class CommonVoiceAdapter(Adapter):
     # TODO actual saving of working json
     # Actual json output
 
-    print(json.dumps(self.mediaAnnotationBundles,
-                     default=lambda o: o.__dict__,
-                     sort_keys=True, indent=4))
+    print(json.dumps(self.mediaAnnotationBundles, default=lambda o: o.__dict__, sort_keys=True, indent=4))
 
     pass
