@@ -1,6 +1,8 @@
 import itertools
 import os
 
+import librosa
+
 from baseobjects import LoggingObject
 from metamodel.mediasession import MediaSession
 from utils import winapi_path
@@ -35,7 +37,7 @@ class MailabsAdapter(Adapter):
 
     foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
     self._createMetadatafiles(mediaSession, foldernames)
-    self._prepareAndMoveAudioFiles(mediaSession)
+    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
     self._validateProcess(mediaSession)
 
   def _createFolderStructureAccordingToMailabs(self, mediaSession):
@@ -88,13 +90,23 @@ class MailabsAdapter(Adapter):
         with open(filepath, 'a') as fd:
           fd.write(self._getFilenameWithoutExtensionFromBundle(
               mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "\n")
-        pass
+    pass
 
   def _getFilenameWithoutExtensionFromBundle(self, fullpath):
     return os.path.splitext(os.path.basename(fullpath))[0]
 
-  def _prepareAndMoveAudioFiles(self, mediaSession):
+  def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
     self.logger.debug("Starting prepare and move audiofiles mailabs")
+    for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+      currentWrittenResource = mediaAnnotationBundle.writtenResource
+      if currentWrittenResource is not None:
+        currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+        # propably very slow, because loads floating-points...
+        y3, sr3 = librosa.load(mediaAnnotationBundle.identifier, sr=16000)
+        targetAudioFileName = os.path.join(currentFolder,
+                                           os.path.splitext(os.path.basename(mediaAnnotationBundle.identifier))[
+                                             0] + ".wav")
+        librosa.output.write_wav(targetAudioFileName, y3, sr3)
     pass
 
   def _validateProcess(self, mediaSession):

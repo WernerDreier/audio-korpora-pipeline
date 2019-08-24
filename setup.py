@@ -5,7 +5,7 @@
 
 from setuptools import setup, find_packages
 
-requirements = ['SoundFile==0.10.2']
+requirements = ['SoundFile==0.10.2', 'librosa==0.7.0']
 setup_requirements = ['pytest-runner']
 test_requirements = ['pytest']
 
