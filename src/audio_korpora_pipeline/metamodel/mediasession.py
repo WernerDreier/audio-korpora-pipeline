@@ -8,7 +8,9 @@ class Sex(Enum):
   MALE = 1
   FEMALE = 2
 
-  def toSexEnum(self, genderstring="Unknown"):
+  @staticmethod
+  def toSexEnum(genderstring='Unknown'):
+    genderstring = str(genderstring)
     if (genderstring == "male"):
       return Sex.MALE
     if (genderstring == "female"):

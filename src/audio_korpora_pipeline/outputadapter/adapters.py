@@ -1,6 +1,7 @@
 import itertools
 import os
 import shutil
+from time import gmtime, strftime
 
 import librosa
 
@@ -36,6 +37,11 @@ class MailabsAdapter(Adapter):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession must not be None and must be of type MediaSession")
 
+    self.logger.debug("Cleaning workdirectory {}".format(self._validateOutputPath()))
+    # making sure all are empty when we start the process:
+    shutil.rmtree(self._validateOutputPath(), ignore_errors=True)
+
+    self.logger.debug("Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
     self._createMetadatafiles(mediaSession, foldernames)
     self._resampleAndCopyAudioFiles(mediaSession, foldernames)
@@ -118,8 +124,7 @@ class MailabsAdapter(Adapter):
     pass
 
   def _generateFoldernames(self, language_set, gender_set, speaker_set, bookname_mailabs):
-    merged = list(itertools.chain.from_iterable([language_set, gender_set]))
-    possibleCombinationsOfLanguageAndGender = list(itertools.combinations(merged, 2))
+    possibleCombinationsOfLanguageAndGender = list(itertools.product(language_set, gender_set))
     combinationPath = [os.path.join(self._outputPath(), combination[0].ISO639, "by_book", combination[1].name)
                        for combination in
                        possibleCombinationsOfLanguageAndGender]
@@ -134,9 +139,6 @@ class MailabsAdapter(Adapter):
           # see https://stackoverflow.com/questions/36219317/pathname-too-long-to-open/36219497
           actualFolder = winapi_path(actualFolder)
           finalPaths.append(actualFolder)
-
-          # making sure all are empty when we start the process:
-          shutil.rmtree(actualFolder, ignore_errors=True)
           # create folders
           os.makedirs(actualFolder, exist_ok=True)
 
