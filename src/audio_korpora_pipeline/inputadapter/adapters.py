@@ -34,11 +34,8 @@ class CommonVoiceAdapter(Adapter):
 
   def toMetamodel(self):
     self.logger.debug("hello CommonVoice Adapter")
-    korpus_path = self._validateKorpusPath()
-
     self.audiofilenames = self._readExistingAudioFiles()
     self.speakermetadata = self._readExistingSpeakerMetadata()
-
     self._persistMetamodel()
 
     pass
@@ -56,11 +53,9 @@ class CommonVoiceAdapter(Adapter):
     fullpath = os.path.join(self._validateKorpusPath(), self.RELATIVE_PATH_TO_AUDIO)
     for file in os.listdir(fullpath):
       if file.endswith(".mp3"):
-        currentfile = MediaAnnotationBundle(file)
+        currentfile = MediaAnnotationBundle(self._existingAudioFileFullpath(file))
         self.mediaAnnotationBundles.append(currentfile)
-    self.logger.debug(
-        "Found {} audiofiles to process".format(
-            len(self.mediaAnnotationBundles)))
+    self.logger.debug("Found {} audiofiles to process".format(len(self.mediaAnnotationBundles)))
     pass
 
   def _readExistingSpeakerMetadata(self, ):
@@ -90,11 +85,11 @@ class CommonVoiceAdapter(Adapter):
     return common_voice_valid_metadata
 
   def _getFilenamesFromMediaAnnotationBundles(self):
-    return [os.path.splitext(base.identifier)[0] for base in
+    return [os.path.splitext(os.path.basename(base.identifier))[0] for base in
             self.mediaAnnotationBundles]
 
-  def _getFilenameWithoutExtension(self, filename):
-    return os.path.splitext(filename)[0]
+  def _getFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
 
   def _persistMetamodel(self):
     # TODO actual saving of working json
