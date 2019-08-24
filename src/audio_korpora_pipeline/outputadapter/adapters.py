@@ -33,8 +33,8 @@ class MailabsAdapter(Adapter):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession must not be None and must be of type MediaSession")
 
-    self._createFolderStructureAccordingToMailabs(mediaSession)
-    self._createMetadatafiles(mediaSession)
+    foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
+    self._createMetadatafiles(mediaSession, foldernames)
     self._prepareAndMoveAudioFiles(mediaSession)
     self._validateProcess(mediaSession)
 
@@ -44,9 +44,10 @@ class MailabsAdapter(Adapter):
     speaker_set = self._determineSpeaker(mediaSession)
     bookname_mailabs = self._determineBookName(mediaSession)
 
-    foldernames = self._generateFoldernames(language_set, gender_set, speaker_set, bookname_mailabs)
     self.logger.debug("Starting prepare folderstructure mailabs")
-    pass
+    foldernames = self._generateFoldernames(language_set, gender_set, speaker_set, bookname_mailabs)
+    self.logger.debug("Created the following folders:{}".format(foldernames))
+    return foldernames
 
   def _determineLanguages(self, mediaSession):
     languages = [(wr.language) for wr in
@@ -74,9 +75,23 @@ class MailabsAdapter(Adapter):
     self.logger.debug("Bookname is {}".format(bookname))
     return bookname
 
-  def _createMetadatafiles(self, mediaSession):
+  def _createMetadatafiles(self, mediaSession, foldernames):
     self.logger.debug("Starting metadatafile-creation mailabs")
-    pass
+    for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+      currentWrittenResource = mediaAnnotationBundle.writtenResource
+      if currentWrittenResource is not None:
+        currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+        # creating file
+        filepath = os.path.join(currentFolder, "metadata.csv")
+        # appending to file if present
+        open(filepath, 'a').close()
+        with open(filepath, 'a') as fd:
+          fd.write(self._getFilenameWithoutExtensionFromBundle(
+              mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "\n")
+        pass
+
+  def _getFilenameWithoutExtensionFromBundle(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
 
   def _prepareAndMoveAudioFiles(self, mediaSession):
     self.logger.debug("Starting prepare and move audiofiles mailabs")
