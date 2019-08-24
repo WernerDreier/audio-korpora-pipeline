@@ -9,6 +9,7 @@ import os
 import sys
 
 from inputadapter.adapters import ArchimobAdapter, CommonVoiceAdapter
+from outputadapter.adapters import MailabsAdapter
 
 
 def __load_config(config_path):
@@ -78,7 +79,10 @@ def main():
   adapter.toMetamodel()
 
   commonVoiceAdapter = CommonVoiceAdapter(config)
-  commonVoiceAdapter.toMetamodel()
+  metamodel = commonVoiceAdapter.toMetamodel()
+
+  mailabs_adapter = MailabsAdapter(config)
+  mailabs_adapter.fromMetamodel(metamodel)
 
   return 0
 

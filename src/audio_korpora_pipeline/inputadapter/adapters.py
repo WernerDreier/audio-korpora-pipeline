@@ -12,7 +12,7 @@ class Adapter(LoggingObject):
   def __init__(self, config):
     super(Adapter, self).__init__()
 
-  def toMetamodel(self):
+  def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
 
 
@@ -40,10 +40,8 @@ class CommonVoiceAdapter(Adapter):
     self.audiofilenames = self._readExistingAudioFiles()
     self.speakermetadata = self._readExistingSpeakerMetadata()
     # self._persistMetamodel()
-
     self._buildMediaSession()
-
-    pass
+    return self.mediaSession
 
   def _validateKorpusPath(self):
     korpus_path = self.config['common_voice_input_adapter']['korpus_path']
