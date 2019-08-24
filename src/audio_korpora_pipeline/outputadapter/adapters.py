@@ -1,5 +1,6 @@
 import itertools
 import os
+import shutil
 
 import librosa
 
@@ -97,10 +98,13 @@ class MailabsAdapter(Adapter):
 
   def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
     self.logger.debug("Starting prepare and move audiofiles mailabs")
-    for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
+      self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
       currentWrittenResource = mediaAnnotationBundle.writtenResource
       if currentWrittenResource is not None:
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+        currentFolder = os.path.join(currentFolder, "wavs")
+        os.makedirs(currentFolder, exist_ok=True)
         # propably very slow, because loads floating-points...
         y3, sr3 = librosa.load(mediaAnnotationBundle.identifier, sr=16000)
         targetAudioFileName = os.path.join(currentFolder,
@@ -130,6 +134,10 @@ class MailabsAdapter(Adapter):
           # see https://stackoverflow.com/questions/36219317/pathname-too-long-to-open/36219497
           actualFolder = winapi_path(actualFolder)
           finalPaths.append(actualFolder)
+
+          # making sure all are empty when we start the process:
+          shutil.rmtree(actualFolder, ignore_errors=True)
+          # create folders
           os.makedirs(actualFolder, exist_ok=True)
 
     self.logger.debug("Found and created {} Outputpaths for MAILABS".format(len(finalPaths)))
