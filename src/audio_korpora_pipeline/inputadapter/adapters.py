@@ -4,7 +4,8 @@ import os
 import pandas as pd
 
 from baseobjects import LoggingObject
-from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, MediaSessionActor, Sex
+from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, MediaSessionActor, Sex, \
+  MediaSessionActors, MediaSession
 
 
 class Adapter(LoggingObject):
@@ -26,7 +27,9 @@ class ArchimobAdapter(Adapter):
 class CommonVoiceAdapter(Adapter):
   RELATIVE_PATH_TO_AUDIO = "clips"
   LANGUAGECODE_DE = "de_DE"
+  ADAPTERNAME = "CommonVoiceDE"
   mediaAnnotationBundles = []
+  mediaSessionActors = set()  # using a set so we don't have duplets
 
   def __init__(self, config):
     super(CommonVoiceAdapter, self).__init__(config=config)
@@ -36,7 +39,9 @@ class CommonVoiceAdapter(Adapter):
     self.logger.debug("hello CommonVoice Adapter")
     self.audiofilenames = self._readExistingAudioFiles()
     self.speakermetadata = self._readExistingSpeakerMetadata()
-    self._persistMetamodel()
+    # self._persistMetamodel()
+
+    self._buildMediaSession()
 
     pass
 
@@ -78,7 +83,6 @@ class CommonVoiceAdapter(Adapter):
   pass
 
   def _extractMediaSessionActors(self, common_voice_valid_metadata):
-    self.mediaSessionActors = set()  # using a set so we don't have duplets
     for index, row in common_voice_valid_metadata.iterrows():
       self.mediaSessionActors.add(MediaSessionActor(row.client_id, Sex.toSexEnum(row.gender), row.age))
     self.logger.debug("Found {} Speakers".format(len(self.mediaSessionActors)))
@@ -103,7 +107,14 @@ class CommonVoiceAdapter(Adapter):
   def _persistMetamodel(self):
     # TODO actual saving of working json
     # Actual json output
-
     print(json.dumps(self.mediaAnnotationBundles, default=lambda o: o.__dict__, sort_keys=True, indent=4))
+    pass
 
+  def _buildMediaSession(self):
+    actors = MediaSessionActors(self.mediaSessionActors)
+    session = MediaSession(self.ADAPTERNAME, actors, self.mediaAnnotationBundles)
+    # TODO Validate
+    self.mediaSession = session
+    # print(json.dumps(self.mediaSession, default=lambda o: o.__dict__, sort_keys=True, indent=4))
+    print(self.mediaSession)
     pass

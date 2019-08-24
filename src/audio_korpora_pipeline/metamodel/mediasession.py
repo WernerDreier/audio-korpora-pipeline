@@ -16,11 +16,6 @@ class Sex(Enum):
     return Sex.UNKNOWN
 
 
-class MediaSession(LoggingObject):
-  def __init__(self, name):
-    self.name = name
-
-
 class MediaAnnotationBundle(LoggingObject):
 
   def __init__(self, identifier):
@@ -48,7 +43,7 @@ class MediaFile(LoggingObject):
     self.actorRef = actor
 
 
-class Language:
+class Language(LoggingObject):
   def __init__(self, languageCode):
     self.ISO639 = languageCode
     self.languageName = languageCode
@@ -70,14 +65,14 @@ class WrittenResource(LoggingObject):
     self.language = Language(languageCode)
 
 
-class MediaSessionActors:
+class MediaSessionActors(LoggingObject):
   def __init__(self, actors=None):
     if actors is None:
       actors = []
     self.mediaSessionActors = actors
 
 
-class MediaSessionActor:
+class MediaSessionActor(LoggingObject):
   def __init__(self, id, sex=Sex.UNKNOWN, age=None):
     self.id = id
     self.sex = sex
@@ -95,3 +90,13 @@ class MediaSessionActor:
 
   def __hash__(self):
     return hash(self.__repr__())
+
+
+class MediaSession(LoggingObject):
+  def __init__(self, name, mediaSessionActors=None, mediaAnnotationBundles=[]):
+    self.mediaSessionActors = mediaSessionActors
+    self.mediaAnnotationBundles = mediaAnnotationBundles
+    self.name = name
+
+  def __repr__(self):
+    return "MediaSession(%s, %s,%s)" % (self.name, self.mediaSessionActors, self.mediaAnnotationBundles)
