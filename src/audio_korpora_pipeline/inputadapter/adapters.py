@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 from baseobjects import LoggingObject
-from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile
+from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, MediaSessionActor, Sex
 
 
 class Adapter(LoggingObject):
@@ -64,6 +64,7 @@ class CommonVoiceAdapter(Adapter):
         existing_audio_identifier, self._validateKorpusPath())
 
     self._enrichWithTranscription(common_voice_valid_metadata)
+    self._extractMediaSessionActors(common_voice_valid_metadata)
 
   def _enrichWithTranscription(self, common_voice_valid_metadata):
     # TODO will not be very performant
@@ -73,6 +74,14 @@ class CommonVoiceAdapter(Adapter):
       currentMediaAnnotationBundle[0].setWrittenResource(
           WrittenResource(row.sentence, row.client_id, self.LANGUAGECODE_DE))
       currentMediaAnnotationBundle[0].setMediaFile(MediaFile(row.client_id))
+
+  pass
+
+  def _extractMediaSessionActors(self, common_voice_valid_metadata):
+    self.mediaSessionActors = set()  # using a set so we don't have duplets
+    for index, row in common_voice_valid_metadata.iterrows():
+      self.mediaSessionActors.add(MediaSessionActor(row.client_id, Sex.toSexEnum(row.gender), row.age))
+    self.logger.debug("Found {} Speakers".format(len(self.mediaSessionActors)))
 
   pass
 
