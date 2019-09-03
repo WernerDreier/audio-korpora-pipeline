@@ -16,6 +16,18 @@ class Adapter(LoggingObject):
     raise NotImplementedError("Please use a subclass")
 
 
+class ChJugendspracheAdapter(Adapter):
+  def __init__(self, config):
+    super(ChJugendspracheAdapter, self).__init__(config=config)
+    self.config = config
+
+  def toMetamodel(self):
+    self.logger.debug("CH-Jugendsprache Korpus")
+    # TODO: use the following capabilities to split long audio to spoken-voice chunks (Voice Activation Detection)
+    # Use Sox with those parameters:  sox <input.wav> -r 16k -c 1 -b 16 <output.wav>
+    # Use webrtcvad#example.py library to chunk the audio
+
+
 class ArchimobAdapter(Adapter):
   def __init__(self, config):
     super(ArchimobAdapter, self).__init__(config=config)
