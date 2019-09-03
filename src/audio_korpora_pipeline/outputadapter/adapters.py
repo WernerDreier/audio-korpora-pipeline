@@ -17,8 +17,33 @@ class Adapter(LoggingObject):
   def fromMetamodel(self, mediaSession):
     raise NotImplementedError("Please use a subclass")
 
+  def _cleanOutputFolder(self):
+    self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
+    # making sure all are empty when we start the process:
+    shutil.rmtree(self._basePath())
+    os.makedirs(self._basePath())
+
+
+class LjSpeechAdapter(Adapter):
+  def fromMetamodel(self, mediaSession):
+    if not isinstance(mediaSession, MediaSession):
+      raise ValueError("MediaSession must not be None and must be of type MediaSession")
+    pass
+
 
 class MailabsAdapter(Adapter):
+  def fromMetamodel(self, mediaSession):
+    if not isinstance(mediaSession, MediaSession):
+      raise ValueError("MediaSession must not be None and must be of type MediaSession")
+
+    self._cleanOutputFolder()
+
+    self.logger.debug("Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
+    foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
+    self._createMetadatafiles(mediaSession, foldernames)
+    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
+    self._validateProcess(mediaSession)
+    pass
 
   def _validateBasePath(self):
     outputPath = self._basePath()
@@ -35,21 +60,6 @@ class MailabsAdapter(Adapter):
   def __init__(self, config):
     super(MailabsAdapter, self).__init__(config=config)
     self.config = config
-
-  def fromMetamodel(self, mediaSession):
-    if not isinstance(mediaSession, MediaSession):
-      raise ValueError("MediaSession must not be None and must be of type MediaSession")
-
-    self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
-    # making sure all are empty when we start the process:
-    shutil.rmtree(self._basePath(), ignore_errors=True)
-    os.makedirs(self._outputPath())
-
-    self.logger.debug("Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
-    self._createMetadatafiles(mediaSession, foldernames)
-    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
-    self._validateProcess(mediaSession)
 
   def _createFolderStructureAccordingToMailabs(self, mediaSession):
     language_set = self._determineLanguages(mediaSession)
@@ -129,7 +139,7 @@ class MailabsAdapter(Adapter):
 
   def _generateFoldernames(self, language_set, gender_set, speaker_set, bookname_mailabs):
     possibleCombinationsOfLanguageAndGender = list(itertools.product(language_set, gender_set))
-    combinationPath = [os.path.join(self._outputPath(), combination[0].ISO639, "by_book", combination[1].name)
+    combinationPath = [os.path.join(self._basePath(), combination[0].ISO639, "by_book", combination[1].name)
                        for combination in
                        possibleCombinationsOfLanguageAndGender]
 
