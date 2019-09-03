@@ -23,12 +23,46 @@ class Adapter(LoggingObject):
     shutil.rmtree(self._basePath())
     os.makedirs(self._basePath())
 
+  def _validateBasePath(self):
+    outputPath = self._basePath()
+    if not os.path.isdir(outputPath):
+      raise IOError("Could not read korpus path" + outputPath)
+    return outputPath
+
 
 class LjSpeechAdapter(Adapter):
+  def __init__(self, config):
+    super(LjSpeechAdapter, self).__init__(config=config)
+    self.config = config
+
   def fromMetamodel(self, mediaSession):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession must not be None and must be of type MediaSession")
+
+    self._cleanOutputFolder()
+    self.logger.debug("LJSpeech Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
+    foldername = self._createFolderStructureAccordingToLjSpeech()
+
+    # TODO
+    # self._createMetadatafiles(mediaSession, foldernames)
+    # self._resampleAndCopyAudioFiles(mediaSession, foldernames)
+    # self._validateProcess(mediaSession)
+
     pass
+
+  def _combine_multiple_speakers_into_one_dataset(self):
+    return self.config['ljspeech_output_adapter']['combine_multiple_speakers_into_one_dataset']
+
+  def _basePath(self):
+    return self.config['ljspeech_output_adapter']['output_path']
+
+  def _createFolderStructureAccordingToLjSpeech(self):
+    if (not self._combine_multiple_speakers_into_one_dataset()):
+      raise ValueError("Not yet implemented")
+    else:
+      foldername = os.path.join(self._basePath(), "wavs")
+      os.makedirs(foldername, exist_ok=True)
+      return foldername
 
 
 class MailabsAdapter(Adapter):
@@ -44,12 +78,6 @@ class MailabsAdapter(Adapter):
     self._resampleAndCopyAudioFiles(mediaSession, foldernames)
     self._validateProcess(mediaSession)
     pass
-
-  def _validateBasePath(self):
-    outputPath = self._basePath()
-    if not os.path.isdir(outputPath):
-      raise IOError("Could not read korpus path" + outputPath)
-    return outputPath
 
   def _basePath(self):
     return self.config['mailabs_output_adapter']['output_path']

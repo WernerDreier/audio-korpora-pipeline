@@ -3,6 +3,9 @@
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\common_voice
 [mailabs_output_adapter]
 output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\mailabs
+[ljspeech_output_adapter]
+output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\ljspeech
+combine_multiple_speakers_into_one_dataset = true
 [logging]
 file = log.log
 file_level = DEBUG
