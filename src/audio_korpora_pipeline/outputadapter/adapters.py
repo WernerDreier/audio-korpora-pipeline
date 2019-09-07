@@ -6,9 +6,9 @@ from time import gmtime, strftime
 import librosa
 from quantulum3 import parser
 
-from baseobjects import LoggingObject
-from metamodel.mediasession import MediaSession
-from utils import winapi_path
+from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.metamodel.mediasession import MediaSession
+from audio_korpora_pipeline.utils import winapi_path
 
 
 class Adapter(LoggingObject):

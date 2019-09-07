@@ -8,8 +8,8 @@ import logging
 import os
 import sys
 
-from inputadapter.adapters import CommonVoiceAdapter
-from outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
+from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter
+from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
 
 
 def __load_config(config_path):

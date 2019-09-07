@@ -1,6 +1,6 @@
 from enum import Enum
 
-from baseobjects import LoggingObject
+from audio_korpora_pipeline.baseobjects import LoggingObject
 
 
 class Sex(Enum):

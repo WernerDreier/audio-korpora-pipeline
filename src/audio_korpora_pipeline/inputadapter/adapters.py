@@ -2,8 +2,9 @@ import os
 
 import pandas as pd
 
-from baseobjects import LoggingObject
-from metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, MediaSessionActor, Sex, \
+from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, \
+  MediaSessionActor, Sex, \
   MediaSessionActors, MediaSession
 
 
