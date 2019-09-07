@@ -31,6 +31,6 @@ setup(
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
-    url='Add your of GIT repo here',
-    version='0.1',
+    url='https://WernerDreier@bitbucket.org/werneronly/audio-korpora-pipeline.git',
+    version='0.2',
 )
