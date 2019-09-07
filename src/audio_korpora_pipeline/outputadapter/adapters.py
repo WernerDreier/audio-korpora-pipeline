@@ -4,6 +4,7 @@ import shutil
 from time import gmtime, strftime
 
 import librosa
+from quantulum3 import parser
 
 from baseobjects import LoggingObject
 from metamodel.mediasession import MediaSession
@@ -20,14 +21,39 @@ class Adapter(LoggingObject):
   def _cleanOutputFolder(self):
     self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
     # making sure all are empty when we start the process:
-    shutil.rmtree(self._basePath())
-    os.makedirs(self._basePath())
+    shutil.rmtree(self._basePath(), ignore_errors=True)
+    os.makedirs(self._basePath(), exist_ok=True)
 
   def _validateBasePath(self):
     outputPath = self._basePath()
     if not os.path.isdir(outputPath):
       raise IOError("Could not read korpus path" + outputPath)
     return outputPath
+
+  def _determineLanguages(self, mediaSession):
+    languages = [(wr.language) for wr in
+                 (bundle.writtenResource for bundle in mediaSession.mediaAnnotationBundles if bundle.valid())]
+
+    language_set = set(languages)
+    self.logger.debug("Found {} Language(s) for MAILABS".format(len(language_set)))
+    return language_set
+
+  def _determineGenders(self, mediaSession):
+    actors = mediaSession.mediaSessionActors.mediaSessionActors
+    genders = [actor.sex for actor in actors]
+    gender_set = set(genders)
+    self.logger.debug("Found {} Gender(s) for MAILABS".format(len(gender_set)))
+    return gender_set
+
+  def _determineSpeaker(self, mediaSession):
+    actors = mediaSession.mediaSessionActors.mediaSessionActors
+    speakers = [actor for actor in actors]
+    speaker_set = set(speakers)
+    self.logger.debug("Found {} Speakers(s) for MAILABS".format(len(speaker_set)))
+    return speaker_set
+
+  def _getFilenameWithoutExtensionFromBundle(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
 
 
 class LjSpeechAdapter(Adapter):
@@ -41,10 +67,12 @@ class LjSpeechAdapter(Adapter):
 
     self._cleanOutputFolder()
     self.logger.debug("LJSpeech Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    foldername = self._createFolderStructureAccordingToLjSpeech()
+    foldernames = self._createFolderStructureAccordingToLjSpeech()
+
+    self.logger.debug("Actual foldernames are {}".format(foldernames))
 
     # TODO
-    # self._createMetadatafiles(mediaSession, foldernames)
+    self._createMetadatafiles(mediaSession, foldernames)
     # self._resampleAndCopyAudioFiles(mediaSession, foldernames)
     # self._validateProcess(mediaSession)
 
@@ -57,12 +85,46 @@ class LjSpeechAdapter(Adapter):
     return self.config['ljspeech_output_adapter']['output_path']
 
   def _createFolderStructureAccordingToLjSpeech(self):
+    """
+
+    :return: list of foldernames
+    """
     if (not self._combine_multiple_speakers_into_one_dataset()):
       raise ValueError("Not yet implemented")
     else:
       foldername = os.path.join(self._basePath(), "wavs")
       os.makedirs(foldername, exist_ok=True)
-      return foldername
+      return [foldername]
+
+  def _createMetadatafiles(self, mediaSession, foldernames):
+    self.logger.debug("Starting metadatafile-creation ljspeech")
+    if (not self._combine_multiple_speakers_into_one_dataset()):
+      raise ValueError("Not yet implemented")
+    else:
+      # Assuming only one foldername returned
+      assert len(foldernames) == 1
+      for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+        currentWrittenResource = mediaAnnotationBundle.writtenResource
+        if currentWrittenResource is not None:
+          currentFolder = next(iter(foldernames))
+          # creating file
+          filepath = os.path.join(currentFolder, "../metadata.csv")
+          # appending to file if present
+          open(filepath, 'a').close()
+          normalizedText = self._normalizeText(currentWrittenResource)
+          with open(filepath, 'a') as fd:
+            fd.write(self._getFilenameWithoutExtensionFromBundle(
+                mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "|" + normalizedText + "\n")
+    pass
+
+  def _normalizeText(self, writtenResource):
+    """
+    Normalize abbreviations, numbers and other quantities to written full-words
+    FIXME quantulum does not support german right now, should use: writtenResource.language.ISO639
+    :param writtenResource: written ressource should not be null
+    :return: normalized text
+    """
+    return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
 
 
 class MailabsAdapter(Adapter):
@@ -100,27 +162,6 @@ class MailabsAdapter(Adapter):
     self.logger.debug("Created the following folders:{}".format(foldernames))
     return foldernames
 
-  def _determineLanguages(self, mediaSession):
-    languages = [(wr.language) for wr in
-                 (bundle.writtenResource for bundle in mediaSession.mediaAnnotationBundles if bundle.valid())]
-    language_set = set(languages)
-    self.logger.debug("Found {} Language(s) for MAILABS".format(len(language_set)))
-    return language_set
-
-  def _determineGenders(self, mediaSession):
-    actors = mediaSession.mediaSessionActors.mediaSessionActors
-    genders = [actor.sex for actor in actors]
-    gender_set = set(genders)
-    self.logger.debug("Found {} Gender(s) for MAILABS".format(len(gender_set)))
-    return gender_set
-
-  def _determineSpeaker(self, mediaSession):
-    actors = mediaSession.mediaSessionActors.mediaSessionActors
-    speakers = [actor for actor in actors]
-    speaker_set = set(speakers)
-    self.logger.debug("Found {} Speakers(s) for MAILABS".format(len(speaker_set)))
-    return speaker_set
-
   def _determineBookName(self, mediaSession):
     bookname = mediaSession.name
     self.logger.debug("Bookname is {}".format(bookname))
@@ -140,9 +181,6 @@ class MailabsAdapter(Adapter):
           fd.write(self._getFilenameWithoutExtensionFromBundle(
               mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "\n")
     pass
-
-  def _getFilenameWithoutExtensionFromBundle(self, fullpath):
-    return os.path.splitext(os.path.basename(fullpath))[0]
 
   def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
     self.logger.debug("Starting prepare and move audiofiles mailabs")

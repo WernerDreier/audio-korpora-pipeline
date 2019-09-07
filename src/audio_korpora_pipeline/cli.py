@@ -9,7 +9,7 @@ import os
 import sys
 
 from inputadapter.adapters import ArchimobAdapter, CommonVoiceAdapter
-from outputadapter.adapters import MailabsAdapter, LjSpeechAdapter
+from outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
 
 
 def __load_config(config_path):
@@ -84,6 +84,7 @@ def main():
   ljspeech_adapter = LjSpeechAdapter(config)
   ljspeech_adapter.fromMetamodel(metamodel)
 
+  # TODO Do activate depending on commanline params
   mailabs_adapter = MailabsAdapter(config)
   mailabs_adapter.fromMetamodel(metamodel)
 
