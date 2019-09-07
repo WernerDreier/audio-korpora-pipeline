@@ -8,3 +8,4 @@ SoundFile==0.10.2
 pandas==0.25.0
 librosa==0.7.0
 quantulum3==0.7.2
+pandas==0.25.1
