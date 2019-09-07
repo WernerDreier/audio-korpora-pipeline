@@ -49,7 +49,7 @@ class Adapter(LoggingObject):
     actors = mediaSession.mediaSessionActors.mediaSessionActors
     speakers = [actor for actor in actors]
     speaker_set = set(speakers)
-    self.logger.debug("Found {} Speakers(s) for MAILABS".format(len(speaker_set)))
+    self.logger.debug("Found {} Speakers(s) for MediaSession".format(len(speaker_set)))
     return speaker_set
 
   def _getFilenameWithoutExtensionFromBundle(self, fullpath):
@@ -76,7 +76,7 @@ class LjSpeechAdapter(Adapter):
 
     self._cleanOutputFolder()
     self.logger.debug("LJSpeech Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    foldernames = self._createFolderStructureAccordingToLjSpeech()
+    foldernames = self._createFolderStructureAccordingToLjSpeech(mediaSession)
 
     self.logger.debug("Actual foldernames are {}".format(foldernames))
 
@@ -92,18 +92,22 @@ class LjSpeechAdapter(Adapter):
   def _basePath(self):
     return self.config['ljspeech_output_adapter']['output_path']
 
-  def _createFolderStructureAccordingToLjSpeech(self):
+  def _createFolderStructureAccordingToLjSpeech(self, mediaSession):
     """
 
     :return: list of foldernames
     """
     if (not self._combine_multiple_speakers_into_one_dataset()):
-      raise ValueError("Not yet implemented")
+      speakers = self._determineSpeaker(mediaSession)
+      foldernames = [os.path.join(self._basePath(), currentSpeaker.id) for currentSpeaker in speakers]
     else:
-      foldername = self._basePath()
+      foldernames = [self._basePath()]
+    self.logger.debug("Foldernames for LJSpeech are {}".format(foldernames))
+
+    for foldername in foldernames:
       foldernameWithWavs = os.path.join(foldername, "wavs")
       os.makedirs(foldernameWithWavs, exist_ok=True)
-      return [foldername]
+    return foldernames
 
   def _createMetadatafiles(self, mediaSession, foldernames):
     self.logger.debug("Starting metadatafile-creation ljspeech")
