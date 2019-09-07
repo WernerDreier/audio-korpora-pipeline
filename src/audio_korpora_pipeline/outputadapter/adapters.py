@@ -97,12 +97,14 @@ class LjSpeechAdapter(Adapter):
 
     :return: list of foldernames
     """
-    if (not self._combine_multiple_speakers_into_one_dataset()):
+    if (self._combine_multiple_speakers_into_one_dataset() == True):
+      foldernames = [self._basePath()]
+    else:
       speakers = self._determineSpeaker(mediaSession)
       foldernames = [os.path.join(self._basePath(), currentSpeaker.id) for currentSpeaker in speakers]
-    else:
-      foldernames = [self._basePath()]
     self.logger.debug("Foldernames for LJSpeech are {}".format(foldernames))
+
+    foldernames = [winapi_path(folder) for folder in foldernames]
 
     for foldername in foldernames:
       foldernameWithWavs = os.path.join(foldername, "wavs")
@@ -111,23 +113,21 @@ class LjSpeechAdapter(Adapter):
 
   def _createMetadatafiles(self, mediaSession, foldernames):
     self.logger.debug("Starting metadatafile-creation ljspeech")
-    if (not self._combine_multiple_speakers_into_one_dataset()):
-      raise ValueError("Not yet implemented")
-    else:
-      # Assuming only one foldername returned
-      assert len(foldernames) == 1
-      for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
-        currentWrittenResource = mediaAnnotationBundle.writtenResource
-        if currentWrittenResource is not None:
+    for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+      currentWrittenResource = mediaAnnotationBundle.writtenResource
+      if currentWrittenResource is not None:
+        if (self._combine_multiple_speakers_into_one_dataset() == True):
           currentFolder = next(iter(foldernames))
-          # creating file
-          filepath = os.path.join(currentFolder, "metadata.csv")
-          # appending to file if present
-          open(filepath, 'a', encoding="UTF-8", newline="\n").close()
-          normalizedText = self._normalizeText(currentWrittenResource)
-          with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
-            fd.write(self._getFilenameWithoutExtensionFromBundle(
-                mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "|" + normalizedText + "\n")
+        else:
+          currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+        # creating file
+        filepath = os.path.join(currentFolder, "metadata.csv")
+        # appending to file if present
+        open(filepath, 'a', encoding="UTF-8", newline="\n").close()
+        normalizedText = self._normalizeText(currentWrittenResource)
+        with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
+          fd.write(self._getFilenameWithoutExtensionFromBundle(
+              mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "|" + normalizedText + "\n")
     pass
 
   def _normalizeText(self, writtenResource):
@@ -140,11 +140,13 @@ class LjSpeechAdapter(Adapter):
     return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
 
   def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
-    assert len(foldernames) == 1
     for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
       self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
-      self._actuallyWritingAudioToFilesystem(os.path.join(foldernames[0], "wavs"), mediaAnnotationBundle.identifier,
-                                             samplerate=22500)
+      currentWrittenResource = mediaAnnotationBundle.writtenResource
+      if currentWrittenResource is not None:
+        currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+        self._actuallyWritingAudioToFilesystem(os.path.join(currentFolder, "wavs"), mediaAnnotationBundle.identifier,
+                                               samplerate=22500)
     pass
 
   def _validateProcess(self, mediaSession):
