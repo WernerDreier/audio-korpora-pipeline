@@ -55,10 +55,10 @@ class Adapter(LoggingObject):
   def _getFilenameWithoutExtensionFromBundle(self, fullpath):
     return os.path.splitext(os.path.basename(fullpath))[0]
 
-  def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile):
+  def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile, samplerate=16000):
     os.makedirs(currentFolder, exist_ok=True)
     # propably very slow, because loads floating-points...
-    y3, sr3 = librosa.load(fullpathToFile, sr=16000)
+    y3, sr3 = librosa.load(fullpathToFile, sr=samplerate)
     targetAudioFileName = os.path.join(currentFolder,
                                        os.path.splitext(os.path.basename(fullpathToFile))[
                                          0] + ".wav")
@@ -80,10 +80,9 @@ class LjSpeechAdapter(Adapter):
 
     self.logger.debug("Actual foldernames are {}".format(foldernames))
 
-    # TODO
     self._createMetadatafiles(mediaSession, foldernames)
     self._resampleAndCopyAudioFiles(mediaSession, foldernames)
-    # self._validateProcess(mediaSession)
+    self._validateProcess(mediaSession)
 
     pass
 
@@ -140,7 +139,17 @@ class LjSpeechAdapter(Adapter):
     assert len(foldernames) == 1
     for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
       self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
-      self._actuallyWritingAudioToFilesystem(os.path.join(foldernames[0], "wavs"), mediaAnnotationBundle.identifier)
+      self._actuallyWritingAudioToFilesystem(os.path.join(foldernames[0], "wavs"), mediaAnnotationBundle.identifier,
+                                             samplerate=22500)
+    pass
+
+  def _validateProcess(self, mediaSession):
+    """
+    FIXME should be implemented
+    :param mediaSession:
+    :return:
+    """
+    self.logger.debug("Validate LJSpeech")
     pass
 
 
@@ -207,7 +216,7 @@ class MailabsAdapter(Adapter):
       if currentWrittenResource is not None:
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
         currentFolder = os.path.join(currentFolder, "wavs")
-        self._actuallyWritingAudioToFilesystem(currentFolder, mediaAnnotationBundle.identifier)
+        self._actuallyWritingAudioToFilesystem(currentFolder, mediaAnnotationBundle.identifier, 16000)
     pass
 
   def _validateProcess(self, mediaSession):
