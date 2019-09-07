@@ -1,4 +1,3 @@
-import json
 import os
 
 import pandas as pd
@@ -33,7 +32,7 @@ class ArchimobAdapter(Adapter):
     super(ArchimobAdapter, self).__init__(config=config)
 
   def toMetamodel(self):
-    self.logger.debug("hello archomob input adapter")
+    self.logger.debug("hello archimob input adapter")
 
 
 class CommonVoiceAdapter(Adapter):
@@ -48,10 +47,10 @@ class CommonVoiceAdapter(Adapter):
     self.config = config
 
   def toMetamodel(self):
-    self.logger.debug("hello CommonVoice Adapter")
+    self.logger.debug("Created CommonVoice Adapter")
     self.audiofilenames = self._readExistingAudioFiles()
     self.speakermetadata = self._readExistingSpeakerMetadata()
-    # self._persistMetamodel()
+    self._persistMetamodel()
     self._buildMediaSession()
     return self.mediaSession
 
@@ -115,9 +114,9 @@ class CommonVoiceAdapter(Adapter):
     return os.path.splitext(os.path.basename(fullpath))[0]
 
   def _persistMetamodel(self):
-    # TODO actual saving of working json
+    # TODO actual persisting of working json
     # Actual json output
-    print(json.dumps(self.mediaAnnotationBundles, default=lambda o: o.__dict__, sort_keys=True, indent=4))
+    # print(json.dumps(self.mediaAnnotationBundles, default=lambda o: o.__dict__, sort_keys=True, indent=4))
     pass
 
   def _buildMediaSession(self):
@@ -125,6 +124,4 @@ class CommonVoiceAdapter(Adapter):
     session = MediaSession(self.ADAPTERNAME, actors, self.mediaAnnotationBundles)
     # TODO Validate
     self.mediaSession = session
-    # print(json.dumps(self.mediaSession, default=lambda o: o.__dict__, sort_keys=True, indent=4))
-    print(self.mediaSession)
     pass
