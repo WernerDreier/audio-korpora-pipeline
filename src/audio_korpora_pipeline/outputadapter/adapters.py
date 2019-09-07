@@ -55,6 +55,15 @@ class Adapter(LoggingObject):
   def _getFilenameWithoutExtensionFromBundle(self, fullpath):
     return os.path.splitext(os.path.basename(fullpath))[0]
 
+  def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile):
+    os.makedirs(currentFolder, exist_ok=True)
+    # propably very slow, because loads floating-points...
+    y3, sr3 = librosa.load(fullpathToFile, sr=16000)
+    targetAudioFileName = os.path.join(currentFolder,
+                                       os.path.splitext(os.path.basename(fullpathToFile))[
+                                         0] + ".wav")
+    librosa.output.write_wav(targetAudioFileName, y3, sr3)
+
 
 class LjSpeechAdapter(Adapter):
   def __init__(self, config):
@@ -73,7 +82,7 @@ class LjSpeechAdapter(Adapter):
 
     # TODO
     self._createMetadatafiles(mediaSession, foldernames)
-    # self._resampleAndCopyAudioFiles(mediaSession, foldernames)
+    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
     # self._validateProcess(mediaSession)
 
     pass
@@ -92,8 +101,9 @@ class LjSpeechAdapter(Adapter):
     if (not self._combine_multiple_speakers_into_one_dataset()):
       raise ValueError("Not yet implemented")
     else:
-      foldername = os.path.join(self._basePath(), "wavs")
-      os.makedirs(foldername, exist_ok=True)
+      foldername = self._basePath()
+      foldernameWithWavs = os.path.join(foldername, "wavs")
+      os.makedirs(foldernameWithWavs, exist_ok=True)
       return [foldername]
 
   def _createMetadatafiles(self, mediaSession, foldernames):
@@ -108,11 +118,11 @@ class LjSpeechAdapter(Adapter):
         if currentWrittenResource is not None:
           currentFolder = next(iter(foldernames))
           # creating file
-          filepath = os.path.join(currentFolder, "../metadata.csv")
+          filepath = os.path.join(currentFolder, "metadata.csv")
           # appending to file if present
-          open(filepath, 'a').close()
+          open(filepath, 'a', encoding="UTF-8", newline="\n").close()
           normalizedText = self._normalizeText(currentWrittenResource)
-          with open(filepath, 'a') as fd:
+          with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
             fd.write(self._getFilenameWithoutExtensionFromBundle(
                 mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "|" + normalizedText + "\n")
     pass
@@ -125,6 +135,13 @@ class LjSpeechAdapter(Adapter):
     :return: normalized text
     """
     return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
+
+  def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
+    assert len(foldernames) == 1
+    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
+      self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
+      self._actuallyWritingAudioToFilesystem(os.path.join(foldernames[0], "wavs"), mediaAnnotationBundle.identifier)
+    pass
 
 
 class MailabsAdapter(Adapter):
@@ -176,8 +193,8 @@ class MailabsAdapter(Adapter):
         # creating file
         filepath = os.path.join(currentFolder, "metadata.csv")
         # appending to file if present
-        open(filepath, 'a').close()
-        with open(filepath, 'a') as fd:
+        open(filepath, 'a', encoding="UTF-8", newline="\n").close()
+        with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
           fd.write(self._getFilenameWithoutExtensionFromBundle(
               mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "\n")
     pass
@@ -190,13 +207,7 @@ class MailabsAdapter(Adapter):
       if currentWrittenResource is not None:
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
         currentFolder = os.path.join(currentFolder, "wavs")
-        os.makedirs(currentFolder, exist_ok=True)
-        # propably very slow, because loads floating-points...
-        y3, sr3 = librosa.load(mediaAnnotationBundle.identifier, sr=16000)
-        targetAudioFileName = os.path.join(currentFolder,
-                                           os.path.splitext(os.path.basename(mediaAnnotationBundle.identifier))[
-                                             0] + ".wav")
-        librosa.output.write_wav(targetAudioFileName, y3, sr3)
+        self._actuallyWritingAudioToFilesystem(currentFolder, mediaAnnotationBundle.identifier)
     pass
 
   def _validateProcess(self, mediaSession):
