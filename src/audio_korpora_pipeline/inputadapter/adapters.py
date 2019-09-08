@@ -84,13 +84,14 @@ class CommonVoiceAdapter(Adapter):
   def _enrichWithTranscription(self, common_voice_valid_metadata):
     # TODO will not be very performant
     for index, row in common_voice_valid_metadata.iterrows():
-      currentMediaAnnotationBundle = [a for a in self.mediaAnnotationBundles if self._getFilenameWithoutExtension(
-          a.identifier) == row.path]
+      currentMediaAnnotationBundle = [a for a in self.mediaAnnotationBundles if
+                                      row.path == self._getFilenameWithoutExtension(a.identifier)
+                                      or row.path == self._getFilenameWithExtension(a.identifier)]
       currentMediaAnnotationBundle[0].setWrittenResource(
           WrittenResource(row.sentence, row.client_id, self.LANGUAGECODE_DE))
       currentMediaAnnotationBundle[0].setMediaFile(MediaFile(row.client_id))
 
-  pass
+      pass
 
   def _extractMediaSessionActors(self, common_voice_valid_metadata):
     for index, row in common_voice_valid_metadata.iterrows():
@@ -105,14 +106,23 @@ class CommonVoiceAdapter(Adapter):
     combined_csv = pd.concat(
         [pd.read_csv(os.path.join(korpus_path, f), sep="\t", header=0) for f in commonvoice_valid_metadatafilenames])
     common_voice_valid_metadata = combined_csv[combined_csv.path.isin(existing_audio_identifier)]
+
+    common_voice_valid_metadata = self._fixChangeInDataFormatCommonVoice(common_voice_valid_metadata, combined_csv)
+
     return common_voice_valid_metadata
 
   def _getFilenamesFromMediaAnnotationBundles(self):
     return [os.path.splitext(os.path.basename(base.identifier))[0] for base in
             self.mediaAnnotationBundles]
 
+  def _getFilenamesFromMediaAnnotationBundlesWithExtension(self):
+    return [os.path.basename(base.identifier) for base in self.mediaAnnotationBundles]
+
   def _getFilenameWithoutExtension(self, fullpath):
     return os.path.splitext(os.path.basename(fullpath))[0]
+
+  def _getFilenameWithExtension(self, fullpath):
+    return os.path.basename(fullpath)
 
   def _persistMetamodel(self):
     # TODO actual persisting of working json
@@ -126,3 +136,13 @@ class CommonVoiceAdapter(Adapter):
     # TODO Validate
     self.mediaSession = session
     pass
+
+  def _fixChangeInDataFormatCommonVoice(self, common_voice_valid_metadata, combined_csv):
+    if (len(common_voice_valid_metadata) == 0):
+      self.logger.debug(
+          "CommonVoice tsv-files seem to have filename-extension set (new fileformat). Trying matching with extension")
+      common_voice_valid_metadata = combined_csv[
+        combined_csv.path.isin(self._getFilenamesFromMediaAnnotationBundlesWithExtension())]
+    self.logger.debug(
+        "CommonVoice Valid metadata length is: {}".format(len(common_voice_valid_metadata)))
+    return common_voice_valid_metadata
