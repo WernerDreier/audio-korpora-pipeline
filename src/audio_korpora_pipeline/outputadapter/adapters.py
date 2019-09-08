@@ -2,6 +2,7 @@ import concurrent
 import itertools
 import os
 import shutil
+from concurrent.futures import as_completed
 from time import gmtime, strftime
 
 import librosa
@@ -64,6 +65,7 @@ class Adapter(LoggingObject):
                                        os.path.splitext(os.path.basename(fullpathToFile))[
                                          0] + ".wav")
     librosa.output.write_wav(targetAudioFileName, y3, sr3)
+    return str(targetAudioFileName)
 
 
 class LjSpeechAdapter(Adapter):
@@ -150,9 +152,11 @@ class LjSpeechAdapter(Adapter):
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
         writingAudioToFilesystemList.append((os.path.join(currentFolder, "wavs"), mediaAnnotationBundle.identifier))
 
-      with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        for entry in writingAudioToFilesystemList:
-          executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500)
+      with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500) for entry in
+                   writingAudioToFilesystemList]
+      for future in as_completed(futures):
+        self.logger.debug("Processing Audio is done {}".format(future.result()))
     pass
 
   def _validateProcess(self, mediaSession):
@@ -218,6 +222,7 @@ class MailabsAdapter(Adapter):
         with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
           fd.write(self._getFilenameWithoutExtensionFromBundle(
               mediaAnnotationBundle.identifier) + "|" + currentWrittenResource.name + "\n")
+        self.logger.debug("Created Metadata for {}".format(currentFolder))
     pass
 
   def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
@@ -232,9 +237,11 @@ class MailabsAdapter(Adapter):
         currentFolder = os.path.join(currentFolder, "wavs")
         writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
 
-      with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        for entry in writingAudioToFilesystemList:
-          executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 16000)
+      with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500) for entry in
+                   writingAudioToFilesystemList]
+      for future in as_completed(futures):
+        self.logger.debug("Processing Audio is done {}".format(future.result()))
     pass
 
   def _validateProcess(self, mediaSession):
