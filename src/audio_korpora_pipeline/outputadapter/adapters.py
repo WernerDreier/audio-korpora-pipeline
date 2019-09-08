@@ -59,13 +59,39 @@ class Adapter(LoggingObject):
 
   def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile, samplerate=16000):
     os.makedirs(currentFolder, exist_ok=True)
-    # propably very slow, because loads floating-points...
-    y3, sr3 = librosa.load(fullpathToFile, sr=samplerate)
-    targetAudioFileName = os.path.join(currentFolder,
-                                       os.path.splitext(os.path.basename(fullpathToFile))[
-                                         0] + ".wav")
-    librosa.output.write_wav(targetAudioFileName, y3, sr3)
-    return str(targetAudioFileName)
+
+    try:
+      # propably very slow, because loads floating-points...
+      y3, sr3 = librosa.load(fullpathToFile, sr=samplerate)
+      targetAudioFileName = os.path.join(currentFolder,
+                                         os.path.splitext(os.path.basename(fullpathToFile))[
+                                           0] + ".wav")
+      librosa.output.write_wav(targetAudioFileName, y3, sr3)
+    except:
+      return (False, str(fullpathToFile))
+    return (True, str(fullpathToFile))
+
+  def _resampleAndCopyAudioFiles(self, mediaSession, foldernames, sampleRate, functionToDetermineNextFolder):
+    self.logger.debug("Starting prepare and move audiofiles")
+    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
+      self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
+      currentWrittenResource = mediaAnnotationBundle.writtenResource
+
+      writingAudioToFilesystemList = []
+      if currentWrittenResource is not None:
+        currentFolder = functionToDetermineNextFolder(currentWrittenResource, foldernames)
+        currentFolder = os.path.join(currentFolder, "wavs")
+        writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
+
+      with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], sampleRate) for entry in
+                   writingAudioToFilesystemList]
+      for future in as_completed(futures):
+        if (future.result()[0] == False):
+          # FIXME do actually remove audio from metadata
+          self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+        self.logger.debug("Processing Audio is done {}".format(future.result()))
+    pass
 
 
 class LjSpeechAdapter(Adapter):
@@ -84,7 +110,7 @@ class LjSpeechAdapter(Adapter):
     self.logger.debug("Actual foldernames are {}".format(foldernames))
 
     self._createMetadatafiles(mediaSession, foldernames)
-    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
+    self._resampleAndCopyAudioFilesLjSpeech(mediaSession, foldernames)
     self._validateProcess(mediaSession)
 
     pass
@@ -122,7 +148,7 @@ class LjSpeechAdapter(Adapter):
         if (self._combine_multiple_speakers_into_one_dataset() == True):
           currentFolder = next(iter(foldernames))
         else:
-          currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+          currentFolder = self._determineNextFoldernameLJSpeech(currentWrittenResource, foldernames)
         # creating file
         filepath = os.path.join(currentFolder, "metadata.csv")
         # appending to file if present
@@ -142,22 +168,13 @@ class LjSpeechAdapter(Adapter):
     """
     return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
 
-  def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
-    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
-      self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
-      currentWrittenResource = mediaAnnotationBundle.writtenResource
-
-      writingAudioToFilesystemList = []
-      if currentWrittenResource is not None:
-        currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
-        writingAudioToFilesystemList.append((os.path.join(currentFolder, "wavs"), mediaAnnotationBundle.identifier))
-
-      with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500) for entry in
-                   writingAudioToFilesystemList]
-      for future in as_completed(futures):
-        self.logger.debug("Processing Audio is done {}".format(future.result()))
+  def _resampleAndCopyAudioFilesLjSpeech(self, mediaSession, foldernames):
+    self.logger.debug("Starting prepare and move audiofiles LjSpeech")
+    self._resampleAndCopyAudioFiles(mediaSession, foldernames, 22500, self._determineNextFoldernameLJSpeech)
     pass
+
+  def _determineNextFoldernameLJSpeech(self, currentWrittenResource, foldernames):
+    return next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
 
   def _validateProcess(self, mediaSession):
     """
@@ -179,7 +196,7 @@ class MailabsAdapter(Adapter):
     self.logger.debug("Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
     self._createMetadatafiles(mediaSession, foldernames)
-    self._resampleAndCopyAudioFiles(mediaSession, foldernames)
+    self._resampleAndCopyAudioFilesMailabs(mediaSession, foldernames)
     self._validateProcess(mediaSession)
     pass
 
@@ -225,24 +242,14 @@ class MailabsAdapter(Adapter):
         self.logger.debug("Created Metadata for {}".format(currentFolder))
     pass
 
-  def _resampleAndCopyAudioFiles(self, mediaSession, foldernames):
+  def _resampleAndCopyAudioFilesMailabs(self, mediaSession, foldernames):
     self.logger.debug("Starting prepare and move audiofiles mailabs")
-    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
-      self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
-      currentWrittenResource = mediaAnnotationBundle.writtenResource
-
-      writingAudioToFilesystemList = []
-      if currentWrittenResource is not None:
-        currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
-        currentFolder = os.path.join(currentFolder, "wavs")
-        writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
-
-      with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500) for entry in
-                   writingAudioToFilesystemList]
-      for future in as_completed(futures):
-        self.logger.debug("Processing Audio is done {}".format(future.result()))
+    self._resampleAndCopyAudioFiles(mediaSession, foldernames, 16000, self._mailabsFunctionToDetermineNextFolder)
     pass
+
+  def _mailabsFunctionToDetermineNextFolder(self, currentWrittenResource, foldernames):
+    currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
+    return currentFolder
 
   def _validateProcess(self, mediaSession):
     self.logger.debug("Validate mailabs")
