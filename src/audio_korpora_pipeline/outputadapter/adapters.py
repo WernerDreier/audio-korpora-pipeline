@@ -1,3 +1,4 @@
+import concurrent
 import itertools
 import os
 import shutil
@@ -143,10 +144,15 @@ class LjSpeechAdapter(Adapter):
     for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
       self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
       currentWrittenResource = mediaAnnotationBundle.writtenResource
+
+      writingAudioToFilesystemList = []
       if currentWrittenResource is not None:
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
-        self._actuallyWritingAudioToFilesystem(os.path.join(currentFolder, "wavs"), mediaAnnotationBundle.identifier,
-                                               samplerate=22500)
+        writingAudioToFilesystemList.append((os.path.join(currentFolder, "wavs"), mediaAnnotationBundle.identifier))
+
+      with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        for entry in writingAudioToFilesystemList:
+          executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 22500)
     pass
 
   def _validateProcess(self, mediaSession):
@@ -219,10 +225,16 @@ class MailabsAdapter(Adapter):
     for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
       self.logger.debug("Processing Audio number {} form {}".format(counter, len(mediaSession.mediaAnnotationBundles)))
       currentWrittenResource = mediaAnnotationBundle.writtenResource
+
+      writingAudioToFilesystemList = []
       if currentWrittenResource is not None:
         currentFolder = next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
         currentFolder = os.path.join(currentFolder, "wavs")
-        self._actuallyWritingAudioToFilesystem(currentFolder, mediaAnnotationBundle.identifier, 16000)
+        writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
+
+      with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        for entry in writingAudioToFilesystemList:
+          executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], 16000)
     pass
 
   def _validateProcess(self, mediaSession):
