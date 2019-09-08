@@ -82,23 +82,32 @@ class CommonVoiceAdapter(Adapter):
     self._extractMediaSessionActors(common_voice_valid_metadata)
 
   def _enrichWithTranscription(self, common_voice_valid_metadata):
-    # TODO will not be very performant
-    for index, row in common_voice_valid_metadata.iterrows():
-      currentMediaAnnotationBundle = [a for a in self.mediaAnnotationBundles if
-                                      row.path == self._getFilenameWithoutExtension(a.identifier)
-                                      or row.path == self._getFilenameWithExtension(a.identifier)]
-      currentMediaAnnotationBundle[0].setWrittenResource(
-          WrittenResource(row.sentence, row.client_id, self.LANGUAGECODE_DE))
-      currentMediaAnnotationBundle[0].setMediaFile(MediaFile(row.client_id))
+    self.mediaAnnotationBundles_dictionary_withoutExtension = {self._getFilenameWithoutExtension(x.identifier): x for x
+                                                               in self.mediaAnnotationBundles}
+    self.mediaAnnotationBundles_dictionary_withExtension = {self._getFilenameWithExtension(x.identifier): x for x in
+                                                            self.mediaAnnotationBundles}
+    common_voice_valid_metadata.apply(self._enrichWithTranscriptionInner, axis=1)
+    pass
 
-      pass
+  def _enrichWithTranscriptionInner(self, row):
+    currentMediaAnnotationBundle = self.mediaAnnotationBundles_dictionary_withoutExtension.get(row.path,
+                                                                                               self.mediaAnnotationBundles_dictionary_withExtension.get(
+                                                                                                   row.path))
+    currentMediaAnnotationBundle.setWrittenResource(
+        WrittenResource(row.sentence, row.client_id, self.LANGUAGECODE_DE))
+    currentMediaAnnotationBundle.setMediaFile(MediaFile(row.client_id))
+    self.logger.debug(
+        "Found matching media-annotation bundle for identifier {} and path {}".format(row.client_id, row.path))
 
   def _extractMediaSessionActors(self, common_voice_valid_metadata):
-    for index, row in common_voice_valid_metadata.iterrows():
-      self.mediaSessionActors.add(MediaSessionActor(row.client_id, Sex.toSexEnum(row.gender), row.age))
+    common_voice_valid_metadata.apply(self._createMediaSessionActorFromRow, axis=1)
     self.logger.debug("Found {} Speakers".format(len(self.mediaSessionActors)))
 
   pass
+
+  def _createMediaSessionActorFromRow(self, row):
+    self.mediaSessionActors.add(MediaSessionActor(row.client_id, Sex.toSexEnum(row.gender), row.age))
+    pass
 
   def _getCommonVoiceValidMetadata(self, existing_audio_identifier,
       korpus_path):
