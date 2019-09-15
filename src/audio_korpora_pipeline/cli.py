@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 
+from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
 from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter
 from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
 
@@ -59,12 +60,12 @@ def _createInputAdapters(config, inputs):
 
   # parse input
   inputs = inputs.split(",")
-  accepted_input_corpora = ['CommonVoice']
+  accepted_input_corpora = [l.value for l in ExistingInputAdapter]
   # Create Adapters
   for input in inputs:
     if input not in accepted_input_corpora:
       raise ValueError('please enter valid input corpora type(s): {}'.format(accepted_input_corpora))
-    if ("CommonVoice" == input):
+    if (ExistingInputAdapter.COMMON_VOICE.value == input):
       adapters.append(CommonVoiceAdapter(config))
   return adapters
 
@@ -73,14 +74,15 @@ def _createOutputAdapters(config, outputs):
   adapters = []
   # parse input
   outputs = outputs.split(",")
-  accepted_output_corpora = ['LJSpeech', 'M-AILABS']
+  accepted_output_corpora = [l.value for l in ExistingOutputAdapter]
+  print(accepted_output_corpora)
   # Create Adapters
   for output in outputs:
     if output not in accepted_output_corpora:
       raise ValueError('please enter valid output corpora type(s): {}'.format(accepted_output_corpora))
-    if ("M-AILABS" == output):
+    if (ExistingOutputAdapter.MAILABS.value == output):
       adapters.append(MailabsAdapter(config))
-    if ("LJSpeech" == output):
+    if (ExistingOutputAdapter.LJ_SPEECH.value == output):
       adapters.append(LjSpeechAdapter(config))
   return adapters
 

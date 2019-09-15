@@ -4,9 +4,9 @@ from enum import Enum
 
 
 class ExistingInputAdapter(Enum):
-  COMMON_VOICE = 1
-  ARCHIMOB = 2
+  COMMON_VOICE = "CommonVoice"
 
 
 class ExistingOutputAdapter(Enum):
-  M_AILABS = 1
+  MAILABS = "M-AILABS"
+  LJ_SPEECH = "LJSpeech"
