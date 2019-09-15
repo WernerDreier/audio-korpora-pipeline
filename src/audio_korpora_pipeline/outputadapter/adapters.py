@@ -116,7 +116,7 @@ class LjSpeechAdapter(Adapter):
     pass
 
   def _combine_multiple_speakers_into_one_dataset(self):
-    return self.config['ljspeech_output_adapter']['combine_multiple_speakers_into_one_dataset']
+    return self.config.getboolean('ljspeech_output_adapter', 'combine_multiple_speakers_into_one_dataset')
 
   def _basePath(self):
     return self.config['ljspeech_output_adapter']['output_path']
@@ -127,8 +127,12 @@ class LjSpeechAdapter(Adapter):
     :return: list of foldernames
     """
     if (self._combine_multiple_speakers_into_one_dataset() == True):
+      self.logger.debug("Multiple speaker should be merged into one dataset as config is set to :{}".format(
+          self._combine_multiple_speakers_into_one_dataset()))
       foldernames = [self._basePath()]
     else:
+      self.logger.debug("Multiple speaker will be in seperate output folders, as config is set to :{}".format(
+          self._combine_multiple_speakers_into_one_dataset()))
       speakers = self._determineSpeaker(mediaSession)
       foldernames = [os.path.join(self._basePath(), currentSpeaker.id) for currentSpeaker in speakers]
     self.logger.debug("Foldernames for LJSpeech are {}".format(foldernames))
@@ -174,6 +178,8 @@ class LjSpeechAdapter(Adapter):
     pass
 
   def _determineNextFoldernameLJSpeech(self, currentWrittenResource, foldernames):
+    if (self._combine_multiple_speakers_into_one_dataset() == True):
+      return foldernames[0]
     return next(folder for folder in foldernames if currentWrittenResource.actorRef in folder)
 
   def _validateProcess(self, mediaSession):
