@@ -11,7 +11,7 @@ test_requirements = ['pytest']
 
 setup(
     author="Werner Dreier",
-    author_email='***REMOVED***',
+    author_email='code@wernerdreier.ch',
     classifiers=[
       'Programming Language :: Python :: 3.7',
     ],
@@ -33,5 +33,5 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://WernerDreier@bitbucket.org/werneronly/audio-korpora-pipeline.git',
-    version='0.6',
+    version='0.7-SNAPSHOT',
 )
