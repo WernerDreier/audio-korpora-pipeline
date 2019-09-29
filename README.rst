@@ -18,8 +18,17 @@ This tool does not automatically download corpora from the internet, as download
 This means you have to get the data yourself and adjust the configuration according your filepaths.
 
 The following is an example how to convert CommonVoice (Input) to M-AILABS and LJSpeech (Output)
-Example command:
-audio_korpora_pipeline -c config.cfg --input_corpora="CommonVoice" --output_corpora="LJSpeech"
+Example command::
+
+        audio_korpora_pipeline -c config.cfg --input_corpora="CommonVoice" --output_corpora="LJSpeech"
+
+
+.. _api:
+
+Available Adapter are found within::
+
+         audio_korpora_pipeline.py
+
 
 
 Configuration
