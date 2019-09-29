@@ -2,4 +2,4 @@
 Contributors
 ============
 
-* Werner Dreier <***REMOVED***>
+* Werner Dreier <code@wernerdreier.ch>
