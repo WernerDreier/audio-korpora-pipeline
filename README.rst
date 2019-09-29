@@ -8,8 +8,17 @@ Please consult the changelog to see which corpora are currently supported.
 
 Installation
 ============
+As the software-package is not yet available on pypi build the wheel yourself:
 
-Like any wheel: pip install audio_korpora_pipeline-0.6_SNAPSHOT-py2.py3-none-any.whl
+* Have Python 3.7.x or higher installed
+* Have pip installed
+* Build the wheel::
+
+        python setup.py bdist_wheel
+
+Then install like any wheel::
+
+        pip install audio_korpora_pipeline-0.6_SNAPSHOT-py2.py3-none-any.whl
 
 Getting Started
 ===============
