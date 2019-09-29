@@ -44,9 +44,3 @@ Configuration
 =============
 
 change configuration according your needs within config.cfg
-
-
-Developing
-==========
-
-Describe how to setup a development environment
