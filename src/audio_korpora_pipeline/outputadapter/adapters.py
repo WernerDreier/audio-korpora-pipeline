@@ -1,12 +1,13 @@
 import concurrent
-import itertools
 import os
 import shutil
 from concurrent.futures import as_completed
-from time import gmtime, strftime
 
+import itertools
 import librosa
+import soundfile
 from quantulum3 import parser
+from time import gmtime, strftime
 
 from audio_korpora_pipeline.baseobjects import LoggingObject
 from audio_korpora_pipeline.metamodel.mediasession import MediaSession
@@ -62,11 +63,11 @@ class Adapter(LoggingObject):
 
     try:
       # propably very slow, because loads floating-points...
-      y3, sr3 = librosa.load(fullpathToFile, sr=samplerate)
+      y3, sr3 = librosa.load(fullpathToFile, sr=samplerate, mono=True)
       targetAudioFileName = os.path.join(currentFolder,
                                          os.path.splitext(os.path.basename(fullpathToFile))[
                                            0] + ".wav")
-      librosa.output.write_wav(targetAudioFileName, y3, sr3)
+      soundfile.write(targetAudioFileName, y3, samplerate=samplerate, subtype='PCM_16')
     except:
       return (False, str(fullpathToFile))
     return (True, str(fullpathToFile))
