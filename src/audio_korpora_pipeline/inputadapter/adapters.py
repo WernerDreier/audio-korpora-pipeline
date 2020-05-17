@@ -1,8 +1,11 @@
 import os
 
+import ffmpeg
 import pandas as pd
+import webrtcvad
 
 from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.inputadapter.audiosplit.splitter import Splitter
 from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, \
   MediaSessionActor, Sex, \
   MediaSessionActors, MediaSession
@@ -14,6 +17,51 @@ class Adapter(LoggingObject):
 
   def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
+
+
+class UntranscribedVideoAdapter(Adapter):
+  ADAPTERNAME = "UntranscribedVideoAdapter"
+  AUDIO_SPLIT_AGRESSIVENESS = 3 #webrtcvad 1 (low), 3 (max)
+  mediaAnnotationBundles = []
+  mediaSessionActors = set()  # using a set so we don't have duplets
+
+  def __init__(self, config):
+    super(UntranscribedVideoAdapter, self).__init__(config=config)
+    self.config = config
+
+  def toMetamodel(self):
+    self.logger.debug("Untranscribed Video Korpus")
+    self._convertVideoToMonoAudio()
+    self._splitMonoRawAudioToVoiceSections()
+
+  def _convertVideoToMonoAudio(self):
+    self.logger.debug("Extracting audio wav from video")
+    in_filename = "./tests/resources/korpora/untranscribed_video/Guetnachtgschichtli/Guetnachtgschichtli-Kater Miro - De Bölle-0164450637.mp4"
+    stdout, err = (
+      ffmpeg
+        .input(in_filename)
+        .output('wernutestet.wav', format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+        .overwrite_output()
+        .run(capture_stdout=True, capture_stderr=True)
+    )
+    pass
+
+  def _splitMonoRawAudioToVoiceSections(self):
+    # use webrtcvad
+    audiopath = "wernutestet.wav"
+
+    splitter = Splitter()
+    audio, sample_rate = splitter.read_wave("wernutestet.wav")
+    vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
+    frames = splitter.frame_generator(30, audio, sample_rate)
+    frames = list(frames)
+    segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
+    for i, segment in enumerate(segments):
+      path = 'chunk-%002d.wav' % (i,)
+      print(' Writing %s' % (path,))
+      splitter.write_wave(path, segment, sample_rate)
+
+    pass
 
 
 class ChJugendspracheAdapter(Adapter):

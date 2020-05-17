@@ -3,56 +3,13 @@
 """Console script for audio_korpora_pipeline."""
 
 import argparse
-import configparser
-import logging
 import os
+
 import sys
-
 from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
-from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter
+from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter
 from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
-
-
-def __load_config(config_path):
-  """
-      Parse config file
-
-  """
-
-  config = configparser.RawConfigParser()
-  try:
-    config.read_file(open(config_path))
-  except IOError:
-    raise RuntimeError("Can't read %s " % os.path.abspath(config_path))
-
-  return config
-
-
-def __config_logging(config):
-  """
-      Setup logging config
-
-  """
-
-  logging.__defaultFormatter = logging.Formatter(u"%(message)s")
-  log_file = config.get('logging', 'file')
-  log_level_file = config.get('logging', 'file_level')
-  log_level_stdout = config.get('logging', 'stdout_level')
-  log = logging.getLogger()
-  log.setLevel(logging.DEBUG)
-
-  ch = logging.StreamHandler()
-  ch.setLevel(log_level_stdout)
-
-  fh = logging.FileHandler(log_file, encoding='utf-8')
-  fh.setLevel(log_level_file)
-  log.addHandler(ch)
-  log.addHandler(fh)
-  ch_fmt = logging.Formatter(config.get('logging', 'stdout_fmt'))
-  fh_fmt = logging.Formatter(config.get('logging', 'file_fmt'))
-
-  ch.setFormatter(ch_fmt)
-  fh.setFormatter(fh_fmt)
+from audio_korpora_pipeline.utils import load_config, config_logging
 
 
 def _createInputAdapters(config, inputs):
@@ -67,7 +24,9 @@ def _createInputAdapters(config, inputs):
       raise ValueError('please enter valid input corpora type(s): {}'.format(accepted_input_corpora))
     if (ExistingInputAdapter.COMMON_VOICE.value == input):
       adapters.append(CommonVoiceAdapter(config))
-  return adapters
+    if (ExistingInputAdapter.UNTRANSCRIBED_VIDEO_ADAPTER.vlaue == input):
+      adapters.append(UntranscribedVideoAdapter(config))
+    return adapters
 
 
 def _createOutputAdapters(config, outputs):
@@ -122,8 +81,8 @@ def main():
   if not os.path.isfile(config_path):
     parser.print_help()
 
-  config = __load_config(config_path)
-  __config_logging(__load_config(config_path))
+  config = load_config(config_path)
+  config_logging(load_config(config_path))
 
   # Creating Adapters
   input_adapters = _createInputAdapters(config, args.input)

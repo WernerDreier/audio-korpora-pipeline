@@ -10,3 +10,4 @@ librosa==0.7.0
 quantulum3==0.7.2
 pandas==0.25.1
 ffmpeg-python==0.2.0
+webrtcvad==2.0.10
