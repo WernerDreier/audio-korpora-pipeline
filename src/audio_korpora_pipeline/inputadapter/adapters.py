@@ -30,7 +30,7 @@ class Adapter(LoggingObject):
 
 class UntranscribedVideoAdapter(Adapter):
   ADAPTERNAME = "UntranscribedVideoAdapter"
-  AUDIO_SPLIT_AGRESSIVENESS = 3 #webrtcvad 1 (low), 3 (max)
+  AUDIO_SPLIT_AGRESSIVENESS = 3  # webrtcvad 1 (low), 3 (max)
   mediaAnnotationBundles = []
   mediaSessionActors = set()  # using a set so we don't have duplets
 
@@ -44,12 +44,12 @@ class UntranscribedVideoAdapter(Adapter):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
-  def _getAllVideoFilesInBasepath(self,basepath):
+  def _getAllVideoFilesInBasepath(self, basepath):
     filelist = []
     for dirpath, dirnames, filenames in os.walk(basepath):
       for filename in [f for f in filenames if f.endswith(".mp4")]:
         filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} video files within basepath {}".format(len(filelist),basepath))
+    self.logger.debug("Found {} video files within basepath {}".format(len(filelist), basepath))
     return filelist
 
   def toMetamodel(self):
@@ -63,28 +63,28 @@ class UntranscribedVideoAdapter(Adapter):
     filesToProcess = self._getAllVideoFilesInBasepath(basepath)
 
     wavFilenames = []
-    for filenumber,file in enumerate(filesToProcess):
-      self.logger.debug("Processing video file {}/{} on path {}".format(filenumber+1,len(filesToProcess),file))
+    for filenumber, file in enumerate(filesToProcess):
+      self.logger.debug("Processing video file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
       nextFilename = self._getFullFilenameWithoutExtension(file) + ".wav"
       stdout, err = (
         ffmpeg
           .input(file)
-          .output( nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
           .overwrite_output()
           .run(capture_stdout=True, capture_stderr=True)
       )
       wavFilenames.append(nextFilename)
-      #TODO: do any error handling
+      # TODO: do any error handling
     return wavFilenames
-
+ 
   def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
-    if((wavFilenames == None) or (len(wavFilenames)==0)):
+    if ((wavFilenames == None) or (len(wavFilenames) == 0)):
       self.logger.info("Nothing to split, received empty wav-filenamelist")
       return
 
     splitter = Splitter()
     vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
-    for filenumber,file in enumerate(wavFilenames):
+    for filenumber, file in enumerate(wavFilenames):
       self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
       basename = self._getFullFilenameWithoutExtension(file)
       audio, sample_rate = splitter.read_wave(file)
@@ -93,7 +93,7 @@ class UntranscribedVideoAdapter(Adapter):
       segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
       for i, segment in enumerate(segments):
         path = basename + '_chunk_{:05d}.wav'.format(i)
-        self.logger.debug("Write chunk {} of file {}".format(i,file))
+        self.logger.debug("Write chunk {} of file {}".format(i, file))
         splitter.write_wave(path, segment, sample_rate)
 
       self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))

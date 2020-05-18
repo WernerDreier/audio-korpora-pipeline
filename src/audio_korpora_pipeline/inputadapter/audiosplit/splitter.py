@@ -4,8 +4,7 @@ import sys
 import wave
 
 
-
-#Code copied from: https://github.com/wiseman/py-webrtcvad
+# Code copied from: https://github.com/wiseman/py-webrtcvad
 class Splitter():
 
   def read_wave(self, path):
@@ -23,7 +22,6 @@ class Splitter():
       pcm_data = wf.readframes(wf.getnframes())
       return pcm_data, sample_rate
 
-
   def write_wave(self, path, audio, sample_rate):
     """Writes a .wav file.
 
@@ -35,14 +33,13 @@ class Splitter():
       wf.setframerate(sample_rate)
       wf.writeframes(audio)
 
-
   class Frame(object):
     """Represents a "frame" of audio data."""
+
     def __init__(self, bytes, timestamp, duration):
       self.bytes = bytes
       self.timestamp = timestamp
       self.duration = duration
-
 
   def frame_generator(self, frame_duration_ms, audio, sample_rate):
     """Generates audio frames from PCM audio data.
@@ -60,7 +57,6 @@ class Splitter():
       yield Splitter.Frame(audio[offset:offset + n], timestamp, duration)
       timestamp += duration
       offset += n
-
 
   def vad_collector(self, sample_rate, frame_duration_ms,
       padding_duration_ms, vad, frames):
@@ -92,8 +88,8 @@ class Splitter():
     num_padding_frames = int(padding_duration_ms / frame_duration_ms)
     # We use a deque for our sliding window/ring buffer.
     ring_buffer = collections.deque(maxlen=num_padding_frames)
-    number_of_frames_forming_two_seconds = int(2000/frame_duration_ms)
-    number_of_frames_forming_18_seconds =  int(18000/frame_duration_ms)
+    number_of_frames_forming_two_seconds = int(2000 / frame_duration_ms)
+    number_of_frames_forming_18_seconds = int(18000 / frame_duration_ms)
     # We have two states: TRIGGERED and NOTTRIGGERED. We start in the
     # NOTTRIGGERED state.
     triggered = False
@@ -128,9 +124,9 @@ class Splitter():
         # AND at least two seconds of audio is read already
         # , then enter NOTTRIGGERED and yield whatever
         # audio we've collected.
-        if (((num_unvoiced >= 0.9 * ring_buffer.maxlen) #no voice
-            and (len(voiced_frames) >= number_of_frames_forming_two_seconds)) #longer than one second
-            or (len(voiced_frames) >= number_of_frames_forming_18_seconds)): #not longer than 18 seconds
+        if (((num_unvoiced >= 0.9 * ring_buffer.maxlen)  # no voice
+             and (len(voiced_frames) >= number_of_frames_forming_two_seconds))  # longer than one second
+            or (len(voiced_frames) >= number_of_frames_forming_18_seconds)):  # not longer than 18 seconds
           sys.stdout.write('-(%s)' % (frame.timestamp + frame.duration))
           triggered = False
           yield b''.join([f.bytes for f in voiced_frames])
