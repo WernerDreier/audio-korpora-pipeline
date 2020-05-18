@@ -18,6 +18,15 @@ class Adapter(LoggingObject):
   def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
 
+  def _getFullFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(fullpath)[0]
+
+  def _getFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
+
+  def _getFilenameWithExtension(self, fullpath):
+    return os.path.basename(fullpath)
+
 
 class UntranscribedVideoAdapter(Adapter):
   ADAPTERNAME = "UntranscribedVideoAdapter"
@@ -29,38 +38,67 @@ class UntranscribedVideoAdapter(Adapter):
     super(UntranscribedVideoAdapter, self).__init__(config=config)
     self.config = config
 
+  def _validateKorpusPath(self):
+    korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
+  def _getAllVideoFilesInBasepath(self,basepath):
+    filelist = []
+    for dirpath, dirnames, filenames in os.walk(basepath):
+      for filename in [f for f in filenames if f.endswith(".mp4")]:
+        filelist.append(os.path.join(dirpath, filename))
+    self.logger.debug("Found {} video files within basepath {}".format(len(filelist),basepath))
+    return filelist
+
   def toMetamodel(self):
     self.logger.debug("Untranscribed Video Korpus")
-    self._convertVideoToMonoAudio()
-    self._splitMonoRawAudioToVoiceSections()
+    wavFilenames = self._convertVideoToMonoAudio()
+    self._splitMonoRawAudioToVoiceSections(wavFilenames)
 
   def _convertVideoToMonoAudio(self):
-    self.logger.debug("Extracting audio wav from video")
-    in_filename = "./tests/resources/korpora/untranscribed_video/Guetnachtgschichtli/Guetnachtgschichtli-Kater Miro - De Bölle-0164450637.mp4"
-    stdout, err = (
-      ffmpeg
-        .input(in_filename)
-        .output('wernutestet.wav', format='wav', acodec='pcm_s16le', ac=1, ar='16k')
-        .overwrite_output()
-        .run(capture_stdout=True, capture_stderr=True)
-    )
-    pass
+    basepath = self._validateKorpusPath()
+    self.logger.debug("Extracting audio wav from video from path {}".format(basepath))
+    filesToProcess = self._getAllVideoFilesInBasepath(basepath)
 
-  def _splitMonoRawAudioToVoiceSections(self):
-    # use webrtcvad
-    audiopath = "wernutestet.wav"
+    wavFilenames = []
+    for filenumber,file in enumerate(filesToProcess):
+      self.logger.debug("Processing video file {}/{} on path {}".format(filenumber+1,len(filesToProcess),file))
+      nextFilename = self._getFullFilenameWithoutExtension(file) + ".wav"
+      stdout, err = (
+        ffmpeg
+          .input(file)
+          .output( nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+          .overwrite_output()
+          .run(capture_stdout=True, capture_stderr=True)
+      )
+      wavFilenames.append(nextFilename)
+      #TODO: do any error handling
+    return wavFilenames
+
+  def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
+    if((wavFilenames == None) or (len(wavFilenames)==0)):
+      self.logger.info("Nothing to split, received empty wav-filenamelist")
+      return
 
     splitter = Splitter()
-    audio, sample_rate = splitter.read_wave("wernutestet.wav")
     vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
-    frames = splitter.frame_generator(30, audio, sample_rate)
-    frames = list(frames)
-    segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
-    for i, segment in enumerate(segments):
-      path = 'chunk-%002d.wav' % (i,)
-      print(' Writing %s' % (path,))
-      splitter.write_wave(path, segment, sample_rate)
+    for filenumber,file in enumerate(wavFilenames):
+      self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
+      basename = self._getFullFilenameWithoutExtension(file)
+      audio, sample_rate = splitter.read_wave(file)
+      frames = splitter.frame_generator(30, audio, sample_rate)
+      frames = list(frames)
+      segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
+      for i, segment in enumerate(segments):
+        path = basename + '_chunk_{:05d}.wav'.format(i)
+        self.logger.debug("Write chunk {} of file {}".format(i,file))
+        splitter.write_wave(path, segment, sample_rate)
 
+      self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
+      os.remove(file)
+    self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
     pass
 
 
@@ -174,12 +212,6 @@ class CommonVoiceAdapter(Adapter):
 
   def _getFilenamesFromMediaAnnotationBundlesWithExtension(self):
     return [os.path.basename(base.identifier) for base in self.mediaAnnotationBundles]
-
-  def _getFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(os.path.basename(fullpath))[0]
-
-  def _getFilenameWithExtension(self, fullpath):
-    return os.path.basename(fullpath)
 
   def _persistMetamodel(self):
     # TODO actual persisting of working json
