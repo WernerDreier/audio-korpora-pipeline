@@ -28,55 +28,18 @@ class Adapter(LoggingObject):
     return os.path.basename(fullpath)
 
 
-class UntranscribedVideoAdapter(Adapter):
-  ADAPTERNAME = "UntranscribedVideoAdapter"
+class MediaSplittingAdapter(Adapter):
   AUDIO_SPLIT_AGRESSIVENESS = 3  # webrtcvad 1 (low), 3 (max)
-  mediaAnnotationBundles = []
-  mediaSessionActors = set()  # using a set so we don't have duplets
+  ADAPTERNAME = "MediaSplittingAdapter"
 
-  def __init__(self, config):
-    super(UntranscribedVideoAdapter, self).__init__(config=config)
-    self.config = config
-
-  def _validateKorpusPath(self):
-    korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
-    if not os.path.isdir(korpus_path):
-      raise IOError("Could not read korpus path" + korpus_path)
-    return korpus_path
-
-  def _getAllVideoFilesInBasepath(self, basepath):
+  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
     filelist = []
     for dirpath, dirnames, filenames in os.walk(basepath):
-      for filename in [f for f in filenames if f.endswith(".mp4")]:
+      for filename in [f for f in filenames if f.endswith(filetype)]:
         filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} video files within basepath {}".format(len(filelist), basepath))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
     return filelist
 
-  def toMetamodel(self):
-    self.logger.debug("Untranscribed Video Korpus")
-    wavFilenames = self._convertVideoToMonoAudio()
-    self._splitMonoRawAudioToVoiceSections(wavFilenames)
-
-  def _convertVideoToMonoAudio(self):
-    basepath = self._validateKorpusPath()
-    self.logger.debug("Extracting audio wav from video from path {}".format(basepath))
-    filesToProcess = self._getAllVideoFilesInBasepath(basepath)
-
-    wavFilenames = []
-    for filenumber, file in enumerate(filesToProcess):
-      self.logger.debug("Processing video file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
-      nextFilename = self._getFullFilenameWithoutExtension(file) + ".wav"
-      stdout, err = (
-        ffmpeg
-          .input(file)
-          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
-          .overwrite_output()
-          .run(capture_stdout=True, capture_stderr=True)
-      )
-      wavFilenames.append(nextFilename)
-      # TODO: do any error handling
-    return wavFilenames
- 
   def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
     if ((wavFilenames == None) or (len(wavFilenames) == 0)):
       self.logger.info("Nothing to split, received empty wav-filenamelist")
@@ -101,17 +64,64 @@ class UntranscribedVideoAdapter(Adapter):
     self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
     pass
 
+  def _convertMediafileToMonoAudio(self, basepath, filetype):
+    self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
+    filesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
 
-class ChJugendspracheAdapter(Adapter):
+    wavFilenames = []
+    for filenumber, file in enumerate(filesToProcess):
+      self.logger.debug("Processing file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
+      nextFilename = self._getFullFilenameWithoutExtension(file) + ".mono.wav"
+      stdout, err = (
+        ffmpeg
+          .input(file)
+          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+          .overwrite_output()
+          .run(capture_stdout=True, capture_stderr=True)
+      )
+      wavFilenames.append(nextFilename)
+      # TODO: do any error handling
+    return wavFilenames
+
+
+class UntranscribedVideoAdapter(MediaSplittingAdapter):
+  ADAPTERNAME = "UntranscribedVideoAdapter"
+  mediaAnnotationBundles = []
+  mediaSessionActors = set()  # using a set so we don't have duplets
+
+  def __init__(self, config):
+    super(UntranscribedVideoAdapter, self).__init__(config=config)
+    self.config = config
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
+  def toMetamodel(self):
+    self.logger.debug("Untranscribed Video Korpus")
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".mp4")
+    self._splitMonoRawAudioToVoiceSections(wavFilenames)
+
+
+class ChJugendspracheAdapter(MediaSplittingAdapter):
+  ADAPTERNAME = "CHJugendspracheAdapter"
+
   def __init__(self, config):
     super(ChJugendspracheAdapter, self).__init__(config=config)
     self.config = config
 
+  def _validateKorpusPath(self):
+    korpus_path = self.config['ch_jugendsprache_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
   def toMetamodel(self):
     self.logger.debug("CH-Jugendsprache Korpus")
-    # TODO: use the following capabilities to split long audio to spoken-voice chunks (Voice Activation Detection)
-    # Use Sox with those parameters:  sox <input.wav> -r 16k -c 1 -b 16 <output.wav>
-    # Use webrtcvad#example.py library to chunk the audio
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".WAV")
+    self._splitMonoRawAudioToVoiceSections(wavFilenames)
 
 
 class ArchimobAdapter(Adapter):
