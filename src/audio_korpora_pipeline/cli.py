@@ -4,11 +4,12 @@
 
 import argparse
 import os
-
 import sys
+
 from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
-from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter
-from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
+from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter, \
+  ChJugendspracheAdapter
+from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter, FairseqWav2VecAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
 
 
@@ -24,8 +25,10 @@ def _createInputAdapters(config, inputs):
       raise ValueError('please enter valid input corpora type(s): {}'.format(accepted_input_corpora))
     if (ExistingInputAdapter.COMMON_VOICE.value == input):
       adapters.append(CommonVoiceAdapter(config))
-    if (ExistingInputAdapter.UNTRANSCRIBED_VIDEO_ADAPTER.vlaue == input):
+    if (ExistingInputAdapter.UNTRANSCRIBED_VIDEO.value == input):
       adapters.append(UntranscribedVideoAdapter(config))
+    if (ExistingInputAdapter.CH_JUGENDSPRACHE.value == input):
+      adapters.append(ChJugendspracheAdapter(config))
     return adapters
 
 
@@ -43,6 +46,8 @@ def _createOutputAdapters(config, outputs):
       adapters.append(MailabsAdapter(config))
     if (ExistingOutputAdapter.LJ_SPEECH.value == output):
       adapters.append(LjSpeechAdapter(config))
+    if (ExistingOutputAdapter.FAIRSEQ_WAV2VEC.value == output):
+      adapters.append(FairseqWav2VecAdapter(config))
   return adapters
 
 

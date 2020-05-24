@@ -5,9 +5,11 @@ from enum import Enum
 
 class ExistingInputAdapter(Enum):
   COMMON_VOICE = "CommonVoice"
-  UNTRANSCRIBED_VIDEO_ADAPTER = "UntranscribedVideoAdapter"
+  UNTRANSCRIBED_VIDEO = "UntranscribedVideo"
+  CH_JUGENDSPRACHE = "ChJugendsprache"
 
 
 class ExistingOutputAdapter(Enum):
   MAILABS = "M-AILABS"
   LJ_SPEECH = "LJSpeech"
+  FAIRSEQ_WAV2VEC = "FairseqWav2Vec"
