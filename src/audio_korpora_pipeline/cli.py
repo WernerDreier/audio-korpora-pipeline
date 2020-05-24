@@ -29,7 +29,7 @@ def _createInputAdapters(config, inputs):
       adapters.append(UntranscribedVideoAdapter(config))
     if (ExistingInputAdapter.CH_JUGENDSPRACHE.value == input):
       adapters.append(ChJugendspracheAdapter(config))
-    return adapters
+  return adapters
 
 
 def _createOutputAdapters(config, outputs):
@@ -52,8 +52,10 @@ def _createOutputAdapters(config, outputs):
 
 
 def _transformMetamodelsToOutputs(metamodels, output_adapters):
-  for metamodel in metamodels:
-    for output_adapter in output_adapters:
+  for index, output_adapter in enumerate(output_adapters):
+    if (index == 0):
+      output_adapter.cleanOutputFolder()
+    for metamodel in metamodels:
       output_adapter.fromMetamodel(metamodel)
   pass
 
@@ -92,6 +94,9 @@ def main():
   # Creating Adapters
   input_adapters = _createInputAdapters(config, args.input)
   output_adapters = _createOutputAdapters(config, args.output)
+
+  print("Started with {} input corpora to transform".format(len(input_adapters)))
+  print("Started with {} output corpora as target format".format(len(output_adapters)))
 
   # Creating metamodels
   metamodels = _transformInputsToMetamodel(input_adapters)

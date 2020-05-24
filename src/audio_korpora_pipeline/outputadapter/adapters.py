@@ -22,7 +22,7 @@ class Adapter(LoggingObject):
   def fromMetamodel(self, mediaSession):
     raise NotImplementedError("Please use a subclass")
 
-  def _cleanOutputFolder(self):
+  def cleanOutputFolder(self):
     self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
     # making sure all are empty when we start the process:
     shutil.rmtree(self._basePath(), ignore_errors=True)
@@ -108,7 +108,6 @@ class LjSpeechAdapter(Adapter):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession must not be None and must be of type MediaSession")
 
-    self._cleanOutputFolder()
     self.logger.debug("LJSpeech Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     foldernames = self._createFolderStructureAccordingToLjSpeech(mediaSession)
 
@@ -201,8 +200,6 @@ class MailabsAdapter(Adapter):
   def fromMetamodel(self, mediaSession):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession must not be None and must be of type MediaSession")
-
-    self._cleanOutputFolder()
 
     self.logger.debug("Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     foldernames = self._createFolderStructureAccordingToMailabs(mediaSession)
@@ -299,7 +296,6 @@ class FairseqWav2VecAdapter(Adapter):
     if not isinstance(mediaSession, MediaSession):
       raise ValueError("MediaSession be of type MediaSession")
 
-    self._cleanOutputFolder()
     self.logger.debug("FairseqWav2Vec Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
     foldername = self._createFolderStructureAccordingToFairseqWav2Vec(mediaSession)
 
