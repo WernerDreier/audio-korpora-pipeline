@@ -136,3 +136,6 @@ class TestChJugendspracheAdapter:
     metamodel = adapter.toMetamodel()
     # then
     print(metamodel)
+    assert len(metamodel.mediaSessionActors) == 1, "Muss genau einen Speaker (Unknown) enthalten"
+    assert metamodel.mediaSessionActors.pop().id == "UNKNOWN", "Muss genau einen Speaker (Unknown) enthalten"
+    assert len(metamodel.mediaAnnotationBundles) > 2, "Muss mehr als ein Media bundle enthalten"
