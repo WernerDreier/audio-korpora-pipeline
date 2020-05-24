@@ -1,13 +1,14 @@
 import concurrent
+import itertools
 import os
+import random
 import shutil
 from concurrent.futures import as_completed
+from time import gmtime, strftime
 
-import itertools
 import librosa
 import soundfile
 from quantulum3 import parser
-from time import gmtime, strftime
 
 from audio_korpora_pipeline.baseobjects import LoggingObject
 from audio_korpora_pipeline.metamodel.mediasession import MediaSession
@@ -57,6 +58,9 @@ class Adapter(LoggingObject):
 
   def _getFilenameWithoutExtensionFromBundle(self, fullpath):
     return os.path.splitext(os.path.basename(fullpath))[0]
+
+  def _getFilenameWithExtension(self, fullpath):
+    return os.path.basename(fullpath)
 
   def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile, samplerate=16000):
     os.makedirs(currentFolder, exist_ok=True)
@@ -283,3 +287,90 @@ class MailabsAdapter(Adapter):
 
     self.logger.debug("Found and created {} Outputpaths for MAILABS".format(len(finalPaths)))
     return finalPaths
+
+
+class FairseqWav2VecAdapter(Adapter):
+  def __init__(self, config):
+    super(FairseqWav2VecAdapter, self).__init__(config=config)
+    self.config = config
+    self.rand = random.Random(42)
+
+  def fromMetamodel(self, mediaSession):
+    if not isinstance(mediaSession, MediaSession):
+      raise ValueError("MediaSession be of type MediaSession")
+
+    self._cleanOutputFolder()
+    self.logger.debug("FairseqWav2Vec Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
+    foldername = self._createFolderStructureAccordingToFairseqWav2Vec(mediaSession)
+
+    self.logger.debug("Actual foldername is {}".format(foldername))
+
+    self._createMetadatafiles(mediaSession, foldername)
+    self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession, foldername)
+    self._validateProcess(mediaSession)
+
+    pass
+
+  def _basePath(self):
+    return self.config['fairseq_wav2vec_output_adapter']['output_path']
+
+  def _valid_percent(self):
+    return float(self.config['fairseq_wav2vec_output_adapter']['valid_percent'])
+
+  def _createFolderStructureAccordingToFairseqWav2Vec(self, mediaSession):
+    """
+
+    :return: there is only one output path, as we dont keep track of source on folder level
+    """
+    foldername = self._basePath()
+    foldername = winapi_path(foldername)
+    self.logger.debug("Foldername for FairseqWav2Vec is {}".format(foldername))
+    os.makedirs(self._wav_file_path(), exist_ok=True)
+    return foldername
+
+  def _createMetadatafiles(self, mediaSession, foldername):
+    self.logger.debug("Starting metadatafile-creation Fairseq Wav2Vec")
+
+    # creating targetfiles
+    filepathTrain = os.path.join(foldername, "train.tsv")
+    filepathValid = os.path.join(foldername, "valid.tsv")
+    self._createHeaderOfMetadatfileIfNecessary(filepathTrain)
+    self._createHeaderOfMetadatfileIfNecessary(filepathValid)
+
+    with open(filepathTrain, 'a', encoding="UTF-8", newline="\n") as train_f, open(filepathValid, 'a', encoding="UTF-8",
+                                                                                   newline="\n") as valid_f:
+      for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+        currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
+        frames = soundfile.info(mediaAnnotationBundle.identifier).frames
+        dest = train_f if self.rand.random() > self._valid_percent() else valid_f
+        print('{}\t{}'.format(currentFilename, frames), file=dest)
+      self.logger.debug(
+          "Wrote {} filenames to train and valid metadata files".format(len(mediaSession.mediaAnnotationBundles)))
+
+    pass
+
+  def _resampleAndCopyAudioFilesFairseqWav2Vec(self, mediaSession, foldernames):
+    self.logger.debug("Starting prepare and move audiofiles FairseqWav2Vec")
+    # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
+    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
+      self._actuallyWritingAudioToFilesystem(self._wav_file_path(), mediaAnnotationBundle.identifier)
+    pass
+
+  def _validateProcess(self, mediaSession):
+    """
+    FIXME should be implemented
+    :param mediaSession:
+    :return:
+    """
+    self.logger.debug("Validate FairseqWav2Vec")
+    pass
+
+  def _createHeaderOfMetadatfileIfNecessary(self, filepath):
+    if not (os.path.isfile(filepath)):
+      with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
+        fd.write(self._wav_file_path() + "\n")
+        self.logger.debug("Wrote basepath location for wav-files {} as header".format(self._wav_file_path()))
+    pass
+
+  def _wav_file_path(self):
+    return os.path.join(self._basePath(), "wavs")
