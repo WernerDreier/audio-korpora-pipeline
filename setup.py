@@ -23,7 +23,7 @@ setup(
       ],
     },
     install_requires=requirements,
-    python_requires='>=3.7.4',
+    python_requires='>=3.7.3',
     license="MIT license': 'License :: OSI Approved :: MIT License",
     long_description="Pipeline for preprocessing audio-corpora for deeplearning such as M-AILABS, Common-Voice and others",
     include_package_data=True,
@@ -34,5 +34,5 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/WernerDreier/audio-korpora-pipeline.git',
-    version='0.7',
+    version='0.8-SNAPSHOT',
 )
