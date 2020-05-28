@@ -148,12 +148,29 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     return self._createMediaSession(annotationBundles)
 
 
-class ArchimobAdapter(Adapter):
+class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
+  """
+  ArchimobAdapter currently only converts audio to mono. Metadata-Conversion will be implemented in a later release
+  """
+  ADAPTERNAME = "Archimob"
+
   def __init__(self, config):
     super(ArchimobAdapter, self).__init__(config=config)
+    self.config = config
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['archimob_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
 
   def toMetamodel(self):
-    self.logger.debug("hello archimob input adapter")
+    self.logger.debug("Archimob V2 Korpus")
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".wav")
+    # we do not split into chunks, as we want to go with the original file splits
+    # audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    annotationBundles = self._createMediaAnnotationBundles(wavFilenames)
+    return self._createMediaSession(annotationBundles)
 
 
 class CommonVoiceAdapter(Adapter):

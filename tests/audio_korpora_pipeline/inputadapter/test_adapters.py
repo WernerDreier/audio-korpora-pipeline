@@ -3,22 +3,23 @@ import glob
 import os
 import wave
 
-from audio_korpora_pipeline.inputadapter.adapters import UntranscribedVideoAdapter, ChJugendspracheAdapter
+from audio_korpora_pipeline.inputadapter.adapters import UntranscribedVideoAdapter, ChJugendspracheAdapter, \
+  ArchimobAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
 
 
 def clearWorkingDirs():
-  print("Cleaning working dirs")
   config = load_config("config.cfg.sample")
   config_logging(config)
-  adapter = UntranscribedVideoAdapter(config)
-  korpusPath = adapter._validateKorpusPath()
-  subpaths = ["1 gegen 100", "Guetnachtgschichtli"]
+  adapters = [UntranscribedVideoAdapter(config), ChJugendspracheAdapter(config), ArchimobAdapter(config)]
+  korpusPaths = [adapter._validateKorpusPath() for adapter in adapters]
 
-  for subpath in subpaths:
-    for filename in glob.glob(os.path.join(korpusPath, subpath, "*chunk*.wav")):
+  for korpusPath in korpusPaths:
+    for filename in glob.glob(os.path.join(korpusPath, "**", "*chunk*.wav"), recursive=True):
+      print("Triggered deleting files for folder {}".format(filename))
       os.remove(filename)
-    for filename in glob.glob(os.path.join(korpusPath, subpath, "*.mono.wav")):
+    for filename in glob.glob(os.path.join(korpusPath, "**", "*.mono.wav"), recursive=True):
+      print("Triggered deleting files for folder {}".format(filename))
       os.remove(filename)
 
 
@@ -132,6 +133,42 @@ class TestChJugendspracheAdapter:
     config = load_config("config.cfg.sample")
     config_logging(config)
     adapter = ChJugendspracheAdapter(config)
+    # when
+    metamodel = adapter.toMetamodel()
+    # then
+    assert len(metamodel.mediaSessionActors) == 1, "Muss genau einen Speaker (Unknown) enthalten"
+    assert metamodel.mediaSessionActors.pop().id == "UNKNOWN", "Muss genau einen Speaker (Unknown) enthalten"
+    assert len(metamodel.mediaAnnotationBundles) > 2, "Muss mehr als ein Media bundle enthalten"
+
+
+class TestArchimobAdapter:
+
+  def setup_method(self, method):
+    clearWorkingDirs()
+
+  def test_archimob_extract_audio_from_long_audio_files(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+    korpusPath = adapter._validateKorpusPath()  # assuming this function works as expected
+    assert os.path.exists(os.path.join(korpusPath, "christof", "audio_segmented_anonymized", "1044", "d1044_T1245.wav"))
+    assert os.path.exists(
+        os.path.join(korpusPath, "christof", "audio_segmented_anonymized", "1083_2", "d1083_2_TLI_51.wav"))
+    # when
+    wavFilenames = adapter._convertMediafileToMonoAudio(korpusPath, ".wav")
+    # then
+    assert len(wavFilenames) > 0
+    assert os.path.exists(os.path.join(korpusPath, "christof", "audio_segmented_anonymized", "1044",
+                                       "d1044_T1245.mono.wav")), "Erstes Audio sollte in Wav gewandelt worden sein"
+    assert os.path.exists(os.path.join(korpusPath, "christof", "audio_segmented_anonymized", "1083_2",
+                                       "d1083_2_TLI_51.mono.wav")), "Zweites Audio sollte in Wav gewandelt worden sein"
+
+  def test_archimob_returns_media_session(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
     # when
     metamodel = adapter.toMetamodel()
     # then
