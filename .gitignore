@@ -54,3 +54,5 @@ config.cfg
 #testfiles datasources remove
 /tests/resources
 
+#No Jupyter Notebooks ever
+*.ipynb

@@ -31,6 +31,9 @@ Example command::
 
         audio_korpora_pipeline -c config.cfg --input_corpora="CommonVoice" --output_corpora="LJSpeech"
 
+Another example Command is::
+
+        audio_korpora_pipeline -c config.cfg --input_corpora="Archimob" --input_corpora="ChJugendsprache" --input_corpora="UntranscribedVideo"  --output_corpora="FairseqWav2Vec"
 
 .. _api:
 

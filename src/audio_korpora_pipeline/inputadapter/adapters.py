@@ -1,9 +1,13 @@
 import os
 
+import ffmpeg
 import pandas as pd
+import webrtcvad
 
 from audio_korpora_pipeline.baseobjects import LoggingObject
-from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, WrittenResource, MediaFile, \
+from audio_korpora_pipeline.inputadapter.audiosplit.splitter import Splitter
+from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, \
+  MediaAnnotationBundleWithoutTranscription, WrittenResource, MediaFile, \
   MediaSessionActor, Sex, \
   MediaSessionActors, MediaSession
 
@@ -15,25 +19,158 @@ class Adapter(LoggingObject):
   def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
 
+  def _getFullFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(fullpath)[0]
 
-class ChJugendspracheAdapter(Adapter):
+  def _getFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
+
+  def _getFilenameWithExtension(self, fullpath):
+    return os.path.basename(fullpath)
+
+
+class UntranscribedMediaSplittingAdapter(Adapter):
+  AUDIO_SPLIT_AGRESSIVENESS = 3  # webrtcvad 1 (low), 3 (max)
+  ADAPTERNAME = "MediaSplittingAdapter"
+  mediaAnnotationBundles = []
+  mediaSessionActors = set()  # using a set so we don't have duplets
+
+  def __init__(self, config):
+    super(UntranscribedMediaSplittingAdapter, self).__init__(config=config)
+    self.config = config
+    self.mediaSessionActors.add(MediaSessionActor("UNKNOWN", Sex.UNKNOWN, None))
+
+  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
+    filelist = []
+    for dirpath, dirnames, filenames in os.walk(basepath):
+      for filename in [f for f in filenames if f.endswith(filetype)]:
+        filelist.append(os.path.join(dirpath, filename))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
+    return filelist
+
+  def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
+    if ((wavFilenames == None) or (len(wavFilenames) == 0)):
+      self.logger.info("Nothing to split, received empty wav-filenamelist")
+      return
+
+    audiochunkPaths = []
+    splitter = Splitter()
+    vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
+    for filenumber, file in enumerate(wavFilenames):
+      self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
+      basename = self._getFullFilenameWithoutExtension(file)
+      audio, sample_rate = splitter.read_wave(file)
+      frames = splitter.frame_generator(30, audio, sample_rate)
+      frames = list(frames)
+      segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
+      for i, segment in enumerate(segments):
+        path = basename + '_chunk_{:05d}.wav'.format(i)
+        self.logger.debug("Write chunk {} of file {}".format(i, file))
+        splitter.write_wave(path, segment, sample_rate)
+        audiochunkPaths.append(path)
+
+      self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
+      os.remove(file)
+    self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
+    return audiochunkPaths
+
+  def _convertMediafileToMonoAudio(self, basepath, filetype):
+    self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
+    filesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
+
+    wavFilenames = []
+    for filenumber, file in enumerate(filesToProcess):
+      self.logger.debug("Processing file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
+      nextFilename = self._getFullFilenameWithoutExtension(file) + ".mono.wav"
+      stdout, err = (
+        ffmpeg
+          .input(file)
+          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+          .overwrite_output()
+          .run(capture_stdout=True, capture_stderr=True)
+      )
+      wavFilenames.append(nextFilename)
+      # TODO: do any error handling
+    return wavFilenames
+
+  def _createMediaSession(self, bundles):
+    session = MediaSession(self.ADAPTERNAME, self.mediaSessionActors, bundles)
+    return session
+
+  def _createMediaAnnotationBundles(self, audiochunks):
+    annotationBundles = []
+    for index, filepath in enumerate(audiochunks):
+      bundle = MediaAnnotationBundleWithoutTranscription(identifier=filepath)  # we do not have any written ressources
+      bundle.setMediaFile(filepath)
+      annotationBundles.append(bundle)
+    return annotationBundles
+
+
+class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
+  ADAPTERNAME = "UntranscribedVideoAdapter"
+
+  def __init__(self, config):
+    super(UntranscribedVideoAdapter, self).__init__(config=config)
+    self.config = config
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
+  def toMetamodel(self):
+    self.logger.debug("Untranscribed Video Korpus")
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".mp4")
+    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    annotationBundles = self._createMediaAnnotationBundles(audiochunks)
+    return self._createMediaSession(annotationBundles)
+
+
+class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
+  ADAPTERNAME = "CHJugendspracheAdapter"
+
   def __init__(self, config):
     super(ChJugendspracheAdapter, self).__init__(config=config)
     self.config = config
 
+  def _validateKorpusPath(self):
+    korpus_path = self.config['ch_jugendsprache_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
   def toMetamodel(self):
     self.logger.debug("CH-Jugendsprache Korpus")
-    # TODO: use the following capabilities to split long audio to spoken-voice chunks (Voice Activation Detection)
-    # Use Sox with those parameters:  sox <input.wav> -r 16k -c 1 -b 16 <output.wav>
-    # Use webrtcvad#example.py library to chunk the audio
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".WAV")
+    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    annotationBundles = self._createMediaAnnotationBundles(audiochunks)
+    return self._createMediaSession(annotationBundles)
 
 
-class ArchimobAdapter(Adapter):
+class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
+  """
+  ArchimobAdapter currently only converts audio to mono. Metadata-Conversion will be implemented in a later release
+  """
+  ADAPTERNAME = "Archimob"
+
   def __init__(self, config):
     super(ArchimobAdapter, self).__init__(config=config)
+    self.config = config
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['archimob_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
 
   def toMetamodel(self):
-    self.logger.debug("hello archimob input adapter")
+    self.logger.debug("Archimob V2 Korpus")
+    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".wav")
+    # we do not split into chunks, as we want to go with the original file splits
+    # audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    annotationBundles = self._createMediaAnnotationBundles(wavFilenames)
+    return self._createMediaSession(annotationBundles)
 
 
 class CommonVoiceAdapter(Adapter):
@@ -126,12 +263,6 @@ class CommonVoiceAdapter(Adapter):
 
   def _getFilenamesFromMediaAnnotationBundlesWithExtension(self):
     return [os.path.basename(base.identifier) for base in self.mediaAnnotationBundles]
-
-  def _getFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(os.path.basename(fullpath))[0]
-
-  def _getFilenameWithExtension(self, fullpath):
-    return os.path.basename(fullpath)
 
   def _persistMetamodel(self):
     # TODO actual persisting of working json

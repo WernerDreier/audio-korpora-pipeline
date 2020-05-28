@@ -3,56 +3,14 @@
 """Console script for audio_korpora_pipeline."""
 
 import argparse
-import configparser
-import logging
 import os
 import sys
 
 from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
-from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter
-from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter
-
-
-def __load_config(config_path):
-  """
-      Parse config file
-
-  """
-
-  config = configparser.RawConfigParser()
-  try:
-    config.read_file(open(config_path))
-  except IOError:
-    raise RuntimeError("Can't read %s " % os.path.abspath(config_path))
-
-  return config
-
-
-def __config_logging(config):
-  """
-      Setup logging config
-
-  """
-
-  logging.__defaultFormatter = logging.Formatter(u"%(message)s")
-  log_file = config.get('logging', 'file')
-  log_level_file = config.get('logging', 'file_level')
-  log_level_stdout = config.get('logging', 'stdout_level')
-  log = logging.getLogger()
-  log.setLevel(logging.DEBUG)
-
-  ch = logging.StreamHandler()
-  ch.setLevel(log_level_stdout)
-
-  fh = logging.FileHandler(log_file, encoding='utf-8')
-  fh.setLevel(log_level_file)
-  log.addHandler(ch)
-  log.addHandler(fh)
-  ch_fmt = logging.Formatter(config.get('logging', 'stdout_fmt'))
-  fh_fmt = logging.Formatter(config.get('logging', 'file_fmt'))
-
-  ch.setFormatter(ch_fmt)
-  fh.setFormatter(fh_fmt)
+from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter, \
+  ChJugendspracheAdapter, ArchimobAdapter
+from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter, FairseqWav2VecAdapter
+from audio_korpora_pipeline.utils import load_config, config_logging
 
 
 def _createInputAdapters(config, inputs):
@@ -67,6 +25,12 @@ def _createInputAdapters(config, inputs):
       raise ValueError('please enter valid input corpora type(s): {}'.format(accepted_input_corpora))
     if (ExistingInputAdapter.COMMON_VOICE.value == input):
       adapters.append(CommonVoiceAdapter(config))
+    if (ExistingInputAdapter.UNTRANSCRIBED_VIDEO.value == input):
+      adapters.append(UntranscribedVideoAdapter(config))
+    if (ExistingInputAdapter.CH_JUGENDSPRACHE.value == input):
+      adapters.append(ChJugendspracheAdapter(config))
+    if (ExistingInputAdapter.ARCHIMOB.value == input):
+      adapters.append(ArchimobAdapter(config))
   return adapters
 
 
@@ -84,12 +48,16 @@ def _createOutputAdapters(config, outputs):
       adapters.append(MailabsAdapter(config))
     if (ExistingOutputAdapter.LJ_SPEECH.value == output):
       adapters.append(LjSpeechAdapter(config))
+    if (ExistingOutputAdapter.FAIRSEQ_WAV2VEC.value == output):
+      adapters.append(FairseqWav2VecAdapter(config))
   return adapters
 
 
 def _transformMetamodelsToOutputs(metamodels, output_adapters):
-  for metamodel in metamodels:
-    for output_adapter in output_adapters:
+  for index, output_adapter in enumerate(output_adapters):
+    if (index == 0):
+      output_adapter.cleanOutputFolder()
+    for metamodel in metamodels:
       output_adapter.fromMetamodel(metamodel)
   pass
 
@@ -122,12 +90,15 @@ def main():
   if not os.path.isfile(config_path):
     parser.print_help()
 
-  config = __load_config(config_path)
-  __config_logging(__load_config(config_path))
+  config = load_config(config_path)
+  config_logging(load_config(config_path))
 
   # Creating Adapters
   input_adapters = _createInputAdapters(config, args.input)
   output_adapters = _createOutputAdapters(config, args.output)
+
+  print("Started with {} input corpora to transform".format(len(input_adapters)))
+  print("Started with {} output corpora as target format".format(len(output_adapters)))
 
   # Creating metamodels
   metamodels = _transformInputsToMetamodel(input_adapters)

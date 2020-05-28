@@ -1,11 +1,22 @@
+[untranscribed_videos_input_adapter]
+korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\untranscribed_video
+[ch_jugendsprache_input_adapter]
+korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\ch_jugendsprache
+[archimob_input_adapter]
+korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\archimob
 [common_voice_input_adapter]
 #korpus_path = ./tests/resources/korpora/common_voice
-korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\common_voice
+korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\common_voice_new
+
 [mailabs_output_adapter]
 output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\mailabs
 [ljspeech_output_adapter]
 output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\ljspeech
 combine_multiple_speakers_into_one_dataset = true
+[fairseq_wav2vec_output_adapter]
+output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\fairseqWav2Vec
+valid_percent = 0.1
+
 [logging]
 file = log.log
 file_level = DEBUG

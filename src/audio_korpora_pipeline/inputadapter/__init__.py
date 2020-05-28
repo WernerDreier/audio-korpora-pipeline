@@ -1,1 +1,1 @@
-from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter
+
