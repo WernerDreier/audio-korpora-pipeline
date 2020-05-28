@@ -92,8 +92,8 @@ class UntranscribedMediaSplittingAdapter(Adapter):
             .run(capture_stdout=True, capture_stderr=True)
         )
       except ffmpeg.Error as ffmpgError:
-        self.warn("Ffmpeg rose an error: {}", ffmpgError)
-        self.warn("Due to error of ffmpeg skipped file {}", file)
+        self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
+        self.logger.warn("Due to error of ffmpeg skipped file {}", file)
         continue
       wavFilenames.append(nextFilename)
     return wavFilenames
