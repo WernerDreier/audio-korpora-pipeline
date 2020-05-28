@@ -42,6 +42,7 @@ class TestFairseqWav2VecAdapter:
 
   def setup_method(self, method):
     _clearWorkingDirs()
+    print("Setup triggered")
 
   def test_from_metamodel_integration_test(self):
     # given

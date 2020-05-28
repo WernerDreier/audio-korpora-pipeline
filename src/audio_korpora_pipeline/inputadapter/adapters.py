@@ -110,7 +110,13 @@ class UntranscribedMediaSplittingAdapter(Adapter):
   def _convertMediafileToMonoAudioThread(self, filenumber, totalNumberOfFiles, singleFilepathToProcess):
     self.logger.debug(
         "Processing file {}/{} on path {}".format(filenumber + 1, totalNumberOfFiles, singleFilepathToProcess))
-    nextFilename = self._getFullFilenameWithoutExtension(singleFilepathToProcess) + ".mono.wav"
+    monofileExtension = ".mono.wav"
+    if (monofileExtension in singleFilepathToProcess):
+      self.logger.info("File to process contains mono file extension. Assuming the file is correct, skipping {}".format(
+          singleFilepathToProcess))
+      return (True, str(singleFilepathToProcess), str(singleFilepathToProcess))
+
+    nextFilename = self._getFullFilenameWithoutExtension(singleFilepathToProcess) + monofileExtension
     try:
       stdout, err = (
         ffmpeg

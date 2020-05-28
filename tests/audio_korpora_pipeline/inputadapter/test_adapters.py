@@ -4,7 +4,7 @@ import os
 import wave
 
 from audio_korpora_pipeline.inputadapter.adapters import UntranscribedVideoAdapter, ChJugendspracheAdapter, \
-  ArchimobAdapter
+  ArchimobAdapter, UntranscribedMediaSplittingAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
 
 
@@ -21,6 +21,30 @@ def clearWorkingDirs():
     for filename in glob.glob(os.path.join(korpusPath, "**", "*.mono.wav"), recursive=True):
       print("Triggered deleting files for folder {}".format(filename))
       os.remove(filename)
+
+
+class TestUntranscribedMediaSplitterAdapter:
+
+  def touch(self, path):
+    with open(path, 'a'):
+      os.utime(path, None)
+
+  def test_skipping_files_existing_and_being_named_mono(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = UntranscribedMediaSplittingAdapter(config)
+
+    # a locally existing file with ending "mono.wav" as indicator
+    filepath = "audiofiledummy.mono.wav"
+    self.touch(filepath)
+    assert os.path.exists(filepath), "dummyfile must exist to run the test"
+    # when
+    result = adapter._convertMediafileToMonoAudioThread(123, 150, filepath)
+    os.remove(filepath)  # cleaning
+    # then
+    assert result[2] == result[
+      1] == filepath, "If mono file exists, then there should not be done anything, but return positiv"  # we didnt double the mono suffix resulting in doubling files
 
 
 class TestUntranscribedVideoAdapter:
