@@ -24,7 +24,7 @@ def clearWorkingDirsInput(config):
       os.remove(filename)
 
 
-def clearWorkingDirs():
+def _clearWorkingDirs():
   print("Cleaning working dirs")
   config = load_config("config.cfg.sample")
   config_logging(config)
@@ -34,10 +34,14 @@ def clearWorkingDirs():
   shutil.rmtree(korpusPath, ignore_errors=True)
 
 
+def test_clearWorkingDirs():
+  _clearWorkingDirs()
+
+
 class TestFairseqWav2VecAdapter:
 
   def setup_method(self, method):
-    clearWorkingDirs()
+    _clearWorkingDirs()
 
   def test_from_metamodel_integration_test(self):
     # given
