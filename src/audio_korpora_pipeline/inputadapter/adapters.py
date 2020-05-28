@@ -1,4 +1,6 @@
+import concurrent
 import os
+from concurrent.futures import as_completed
 
 import ffmpeg
 import pandas as pd
@@ -77,26 +79,36 @@ class UntranscribedMediaSplittingAdapter(Adapter):
   def _convertMediafileToMonoAudio(self, basepath, filetype):
     self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
     filesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
+    successfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, currentFile in enumerate(filesToProcess):
+        futures.append(
+            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(filesToProcess), currentFile))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+      self.logger.debug("Processing Audio is done {}".format(future.result()))
+      successfulFilenames.append(future.result()[2])
+    return successfulFilenames
 
-    wavFilenames = []
-    for filenumber, file in enumerate(filesToProcess):
-      self.logger.debug("Processing file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
-      nextFilename = self._getFullFilenameWithoutExtension(file) + ".mono.wav"
-
-      try:
-        stdout, err = (
-          ffmpeg
-            .input(file)
-            .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
-            .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
-        )
-      except ffmpeg.Error as ffmpgError:
-        self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
-        self.logger.warn("Due to error of ffmpeg skipped file {}", file)
-        continue
-      wavFilenames.append(nextFilename)
-    return wavFilenames
+  def _convertMediafileToMonoAudioThread(self, filenumber, totalNumberOfFiles, singleFilepathToProcess):
+    self.logger.debug(
+        "Processing file {}/{} on path {}".format(filenumber + 1, totalNumberOfFiles, singleFilepathToProcess))
+    nextFilename = self._getFullFilenameWithoutExtension(singleFilepathToProcess) + ".mono.wav"
+    try:
+      stdout, err = (
+        ffmpeg
+          .input(singleFilepathToProcess)
+          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+          .overwrite_output()
+          .run(capture_stdout=True, capture_stderr=True)
+      )
+    except ffmpeg.Error as ffmpgError:
+      self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
+      self.logger.warn("Due to error of ffmpeg skipped file {}", singleFilepathToProcess)
+      return (False, str(singleFilepathToProcess), str(nextFilename))
+    return (True, str(singleFilepathToProcess), str(nextFilename))
 
   def _createMediaSession(self, bundles):
     session = MediaSession(self.ADAPTERNAME, self.mediaSessionActors, bundles)
