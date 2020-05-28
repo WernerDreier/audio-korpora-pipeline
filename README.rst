@@ -10,7 +10,7 @@ Installation
 ============
 As the software-package is not yet available on pypi build the wheel yourself:
 
-* Have Python 3.7.x or higher installed
+* Have Python 3.7.3 or higher installed
 * Have pip installed
 * Have wheel-support installed (if not use: pip install wheel)
 * Build the wheel::
@@ -19,7 +19,7 @@ As the software-package is not yet available on pypi build the wheel yourself:
 
 Then install like any wheel::
 
-        pip install audio_korpora_pipeline-0.7-py2.py3-none-any.whl
+        pip install dist/audio_korpora_pipeline-0.8-py2.py3-none-any.whl
 
 Getting Started
 ===============
