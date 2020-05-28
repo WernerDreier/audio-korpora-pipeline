@@ -35,6 +35,16 @@ class MediaAnnotationBundle(LoggingObject):
     return (self.writtenResource is not None) & (self.mediaFile is not None)
 
 
+class MediaAnnotationBundleWithoutTranscription(MediaAnnotationBundle):
+
+  def __init__(self, identifier):
+    MediaAnnotationBundle.__init__(self, identifier=identifier)
+
+  # this is a special type not carrying any transcription and therefore must be empty
+  def valid(self):
+    return (self.writtenResource is None) & (self.mediaFile is not None)
+
+
 class MediaFile(LoggingObject):
   TYPE_AUDIO = "audio"
 
