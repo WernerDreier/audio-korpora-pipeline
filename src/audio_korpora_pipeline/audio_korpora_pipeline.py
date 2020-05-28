@@ -7,6 +7,7 @@ class ExistingInputAdapter(Enum):
   COMMON_VOICE = "CommonVoice"
   UNTRANSCRIBED_VIDEO = "UntranscribedVideo"
   CH_JUGENDSPRACHE = "ChJugendsprache"
+  ARCHIMOB = "Archimob"
 
 
 class ExistingOutputAdapter(Enum):
