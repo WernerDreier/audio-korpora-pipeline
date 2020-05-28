@@ -10,15 +10,16 @@ Installation
 ============
 As the software-package is not yet available on pypi build the wheel yourself:
 
-* Have Python 3.7.x or higher installed
+* Have Python 3.7.3 or higher installed
 * Have pip installed
+* Have wheel-support installed (if not use: pip install wheel)
 * Build the wheel::
 
         python setup.py bdist_wheel
 
 Then install like any wheel::
 
-        pip install audio_korpora_pipeline-0.6_SNAPSHOT-py2.py3-none-any.whl
+        pip install dist/audio_korpora_pipeline-0.8-py2.py3-none-any.whl
 
 Getting Started
 ===============
@@ -33,7 +34,7 @@ Example command::
 
 Another example Command is::
 
-        audio_korpora_pipeline -c config.cfg --input_corpora="Archimob" --input_corpora="ChJugendsprache" --input_corpora="UntranscribedVideo"  --output_corpora="FairseqWav2Vec"
+        audio_korpora_pipeline -c config.cfg --input_corpora="Archimob,ChJugendsprache,UntranscribedVideo" --output_corpora="FairseqWav2Vec"
 
 .. _api:
 
