@@ -82,15 +82,20 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     for filenumber, file in enumerate(filesToProcess):
       self.logger.debug("Processing file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
       nextFilename = self._getFullFilenameWithoutExtension(file) + ".mono.wav"
-      stdout, err = (
-        ffmpeg
-          .input(file)
-          .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
-          .overwrite_output()
-          .run(capture_stdout=True, capture_stderr=True)
-      )
+
+      try:
+        stdout, err = (
+          ffmpeg
+            .input(file)
+            .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+      except ffmpeg.Error as ffmpgError:
+        self.warn("Ffmpeg rose an error: {}", ffmpgError)
+        self.warn("Due to error of ffmpeg skipped file {}", file)
+        continue
       wavFilenames.append(nextFilename)
-      # TODO: do any error handling
     return wavFilenames
 
   def _createMediaSession(self, bundles):
