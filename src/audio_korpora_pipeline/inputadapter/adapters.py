@@ -56,11 +56,26 @@ class UntranscribedMediaSplittingAdapter(Adapter):
       return
 
     audiochunkPaths = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(wavFilenames):
+        futures.append(
+            executor.submit(self._splitMonoRawAudioToVoiceSectionsThread, file))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt split audiofile {}, removing from list".format(future.result()[1]))
+      self.logger.debug("Splitting Audio is done {}".format(future.result()))
+      audiochunkPaths.extend(future.result()[2])
+    self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
+    return audiochunkPaths
+
+  def _splitMonoRawAudioToVoiceSectionsThread(self, file):
+    self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
     splitter = Splitter()
     vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
-    for filenumber, file in enumerate(wavFilenames):
-      self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
-      basename = self._getFullFilenameWithoutExtension(file)
+    basename = self._getFullFilenameWithoutExtension(file)
+    audiochunkPathsForThisfile = []
+    try:
       audio, sample_rate = splitter.read_wave(file)
       frames = splitter.frame_generator(30, audio, sample_rate)
       frames = list(frames)
@@ -69,12 +84,12 @@ class UntranscribedMediaSplittingAdapter(Adapter):
         path = basename + '_chunk_{:05d}.wav'.format(i)
         self.logger.debug("Write chunk {} of file {}".format(i, file))
         splitter.write_wave(path, segment, sample_rate)
-        audiochunkPaths.append(path)
-
+        audiochunkPathsForThisfile.append(path)
       self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
       os.remove(file)
-    self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
-    return audiochunkPaths
+    except:
+      return (False, str(file), [])  # returning an empty list, as no success here
+    return (True, str(file), audiochunkPathsForThisfile)
 
   def _convertMediafileToMonoAudio(self, basepath, filetype):
     self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
