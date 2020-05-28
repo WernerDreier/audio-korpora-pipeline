@@ -34,7 +34,7 @@ Example command::
 
 Another example Command is::
 
-        audio_korpora_pipeline -c config.cfg --input_corpora="Archimob" --input_corpora="ChJugendsprache" --input_corpora="UntranscribedVideo"  --output_corpora="FairseqWav2Vec"
+        audio_korpora_pipeline -c config.cfg --input_corpora="Archimob,ChJugendsprache,UntranscribedVideo" --output_corpora="FairseqWav2Vec"
 
 .. _api:
 
