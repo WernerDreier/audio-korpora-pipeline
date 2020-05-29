@@ -87,7 +87,8 @@ class UntranscribedMediaSplittingAdapter(Adapter):
         audiochunkPathsForThisfile.append(path)
       self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
       os.remove(file)
-    except:
+    except Exception as excep:
+      self.logger.warn("Could split file into chunks {}. Skipping".format(file), exc_info=excep)
       return (False, str(file), [])  # returning an empty list, as no success here
     return (True, str(file), audiochunkPathsForThisfile)
 

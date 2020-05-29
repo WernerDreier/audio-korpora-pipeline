@@ -336,11 +336,18 @@ class FairseqWav2VecAdapter(Adapter):
     with open(filepathTrain, 'a', encoding="UTF-8", newline="\n") as train_f, open(filepathValid, 'a', encoding="UTF-8",
                                                                                    newline="\n") as valid_f:
       for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
-        currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
-        frames = soundfile.info(mediaAnnotationBundle.identifier).frames
-        dest = train_f if self.rand.random() > self._valid_percent() else valid_f
-        print('{}\t{}'.format(currentFilename, frames), file=dest)
-      self.logger.debug(
+        try:
+          currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
+          frames = soundfile.info(mediaAnnotationBundle.identifier).frames
+          dest = train_f if self.rand.random() > self._valid_percent() else valid_f
+          print('{}\t{}'.format(currentFilename, frames), file=dest)
+          self.logger.debug("Wrote filename {} to train or valid metadatafile".format(currentFilename))
+        except Exception as excep:
+          self.logger.warn(
+              "Couldnt get metainformation for file {}. Skipping. This file will not be part of the training set".format(
+                  currentFilename), exc_info=excep)
+          continue
+      self.logger.info(
           "Wrote {} filenames to train and valid metadata files".format(len(mediaSession.mediaAnnotationBundles)))
 
     pass
