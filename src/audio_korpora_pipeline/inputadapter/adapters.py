@@ -50,15 +50,38 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
     return filelist
 
+  def _filterAudioFilesAlreadyBeingMono(self, filelist):
+    monofileHint = ".mono"
+    return self._filterAudioFilesContainingNamePattern(filelist, monofileHint)
+
+  def _filterAudioFilesAlreadyBeingChunked(self, filelist):
+    monofileHint = ".mono_chunk_"
+    return self._filterAudioFilesContainingNamePattern(filelist, monofileHint)
+
+  def _filterAudioFilesContainingNamePattern(self, filelist, filenamepart):
+    processedFiles = []
+    unprocessedFiles = []
+    for file in filelist:
+      if (filenamepart in file):
+        processedFiles.append(file)
+        self.logger.info(
+            "File to process contains {} file name part. Assuming the file is correct, skipping {}".format(
+                filenamepart, file))
+      else:
+        unprocessedFiles.append(file)
+    self.logger.debug(
+        "Got {} files to process and {} already processed for filenamepart {} for given list of length {}".format(
+            len(unprocessedFiles), len(processedFiles), filenamepart, len(filelist)))
+    return processedFiles, unprocessedFiles
+
   def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
     if ((wavFilenames == None) or (len(wavFilenames) == 0)):
       self.logger.info("Nothing to split, received empty wav-filenamelist")
       return
-
-    audiochunkPaths = []
+    audiochunkPaths, unprocessedFilenames = self._filterAudioFilesAlreadyBeingChunked(wavFilenames)
     with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
       futures = []
-      for filenumber, file in enumerate(wavFilenames):
+      for filenumber, file in enumerate(unprocessedFilenames):
         futures.append(
             executor.submit(self._splitMonoRawAudioToVoiceSectionsThread, file))
     for future in as_completed(futures):
@@ -94,13 +117,15 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
   def _convertMediafileToMonoAudio(self, basepath, filetype):
     self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
-    filesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
-    successfulFilenames = []
+    fileCandidatesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
+    successfulFilenames, unprocessedFilenames = self._filterAudioFilesAlreadyBeingMono(fileCandidatesToProcess)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
       futures = []
-      for filenumber, currentFile in enumerate(filesToProcess):
+      for filenumber, currentFile in enumerate(unprocessedFilenames):
         futures.append(
-            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(filesToProcess), currentFile))
+            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(unprocessedFilenames),
+                            currentFile))
     for future in as_completed(futures):
       if (future.result()[0] == False):
         self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
@@ -112,11 +137,6 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.logger.debug(
         "Processing file {}/{} on path {}".format(filenumber + 1, totalNumberOfFiles, singleFilepathToProcess))
     monofileExtension = ".mono.wav"
-    if (monofileExtension in singleFilepathToProcess):
-      self.logger.info("File to process contains mono file extension. Assuming the file is correct, skipping {}".format(
-          singleFilepathToProcess))
-      return (True, str(singleFilepathToProcess), str(singleFilepathToProcess))
-
     nextFilename = self._getFullFilenameWithoutExtension(singleFilepathToProcess) + monofileExtension
     try:
       stdout, err = (
@@ -129,6 +149,9 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     except ffmpeg.Error as ffmpgError:
       self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
       self.logger.warn("Due to error of ffmpeg skipped file {}", singleFilepathToProcess)
+      return (False, str(singleFilepathToProcess), str(nextFilename))
+    except Exception as e:
+      self.logger.warn("Got an error while using ffmpeg for file {}", singleFilepathToProcess, exc_info=e)
       return (False, str(singleFilepathToProcess), str(nextFilename))
     return (True, str(singleFilepathToProcess), str(nextFilename))
 
