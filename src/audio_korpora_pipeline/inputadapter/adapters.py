@@ -6,7 +6,7 @@ import ffmpeg
 import pandas as pd
 import webrtcvad
 
-from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.baseobjects import FileHandlingObject
 from audio_korpora_pipeline.inputadapter.audiosplit.splitter import Splitter
 from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, \
   MediaAnnotationBundleWithoutTranscription, WrittenResource, MediaFile, \
@@ -14,21 +14,19 @@ from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle,
   MediaSessionActors, MediaSession
 
 
-class Adapter(LoggingObject):
+class Adapter(FileHandlingObject):
   def __init__(self, config):
     super(Adapter, self).__init__()
 
   def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
 
-  def _getFullFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(fullpath)[0]
-
-  def _getFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(os.path.basename(fullpath))[0]
-
-  def _getFilenameWithExtension(self, fullpath):
-    return os.path.basename(fullpath)
+  def skipAlreadyProcessedFiles(self):
+    skip = self.config['global']['skipAlreadyProcessedFiles']
+    if not (skip):
+      self.logger.warn("No config setting for skipAlreadyProcessedFiles set. Assuming True")
+      return True
+    return skip
 
 
 class UntranscribedMediaSplittingAdapter(Adapter):
@@ -52,27 +50,11 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
   def _filterAudioFilesAlreadyBeingMono(self, filelist):
     monofileHint = ".mono"
-    return self._filterAudioFilesContainingNamePattern(filelist, monofileHint)
+    return self.filterAudioFilesContainingNamePattern(filelist, monofileHint, self.skipAlreadyProcessedFiles())
 
   def _filterAudioFilesAlreadyBeingChunked(self, filelist):
     monofileHint = ".mono_chunk_"
-    return self._filterAudioFilesContainingNamePattern(filelist, monofileHint)
-
-  def _filterAudioFilesContainingNamePattern(self, filelist, filenamepart):
-    processedFiles = []
-    unprocessedFiles = []
-    for file in filelist:
-      if (filenamepart in file):
-        processedFiles.append(file)
-        self.logger.info(
-            "File to process contains {} file name part. Assuming the file is correct, skipping {}".format(
-                filenamepart, file))
-      else:
-        unprocessedFiles.append(file)
-    self.logger.debug(
-        "Got {} files to process and {} already processed for filenamepart {} for given list of length {}".format(
-            len(unprocessedFiles), len(processedFiles), filenamepart, len(filelist)))
-    return processedFiles, unprocessedFiles
+    return self.filterAudioFilesContainingNamePattern(filelist, monofileHint, self.skipAlreadyProcessedFiles())
 
   def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
     if ((wavFilenames == None) or (len(wavFilenames) == 0)):

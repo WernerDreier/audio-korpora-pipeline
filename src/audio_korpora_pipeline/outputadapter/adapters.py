@@ -22,6 +22,13 @@ class Adapter(LoggingObject):
   def fromMetamodel(self, mediaSession):
     raise NotImplementedError("Please use a subclass")
 
+  def skipAlreadyProcessedFiles(self):
+    skip = self.config['global']['skipAlreadyProcessedFiles']
+    if not (skip):
+      self.logger.warn("No config setting for skipAlreadyProcessedFiles set. Assuming True")
+      return True
+    return skip
+
   def cleanOutputFolder(self):
     self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
     # making sure all are empty when we start the process:
@@ -62,7 +69,7 @@ class Adapter(LoggingObject):
   def _getFilenameWithExtension(self, fullpath):
     return os.path.basename(fullpath)
 
-  def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile, samplerate=16000):
+  def _actuallyWritingAudioToFilesystemThread(self, currentFolder, fullpathToFile, samplerate=16000):
     os.makedirs(currentFolder, exist_ok=True)
 
     try:
@@ -89,7 +96,8 @@ class Adapter(LoggingObject):
         writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
 
       with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], sampleRate) for entry in
+        futures = [executor.submit(self._actuallyWritingAudioToFilesystemThread, entry[0], entry[1], sampleRate) for
+                   entry in
                    writingAudioToFilesystemList]
       for future in as_completed(futures):
         if (future.result()[0] == False):
@@ -356,7 +364,8 @@ class FairseqWav2VecAdapter(Adapter):
     self.logger.debug("Starting prepare and move audiofiles FairseqWav2Vec")
     # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
     for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
-      self._actuallyWritingAudioToFilesystem(self._wav_file_path(), mediaAnnotationBundle.identifier)
+      # TODO: Multithread
+      self._actuallyWritingAudioToFilesystemThread(self._wav_file_path(), mediaAnnotationBundle.identifier)
     pass
 
   def _validateProcess(self, mediaSession):
@@ -366,6 +375,8 @@ class FairseqWav2VecAdapter(Adapter):
     :return:
     """
     self.logger.debug("Validate FairseqWav2Vec")
+    # make sure only files within metadatafiles are mentioned, that exist within wav-folders and vice-versa
+    # make sure no duration is less than 1 second (arbitrary size, just longer than zero, e.g. not corrupt)
     pass
 
   def _createHeaderOfMetadatfileIfNecessary(self, filepath):
