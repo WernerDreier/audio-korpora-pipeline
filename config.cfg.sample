@@ -1,5 +1,6 @@
 [global]
 skipAlreadyProcessedFiles=True
+workdir=C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\workdir
 [untranscribed_videos_input_adapter]
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\untranscribed_video
 [ch_jugendsprache_input_adapter]
