@@ -372,7 +372,7 @@ class FairseqWav2VecAdapter(Adapter):
     self.logger.debug("Starting prepare and move audiofiles FairseqWav2Vec")
     filesToProcess = [mediaAnnotationBundle.identifier for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles]
     if (self.skipAlreadyProcessedFiles()):
-      allExistingWavs = self._getAllMediaFilesInBasepath(self._wav_file_path(), ".wav")
+      allExistingWavs = self._getAllMediaFilesInBasepath(self._wav_file_path(), {".wav"})
       filesToProcess = self._determineFilesToResampleAndCopy(filesToProcess, allExistingWavs)
 
     successfulFilenames = []

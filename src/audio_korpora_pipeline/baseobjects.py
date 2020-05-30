@@ -27,26 +27,28 @@ class FileHandlingObject(LoggingObject):
   def __init__(self):
     super(FileHandlingObject, self).__init__()
 
-  def filterAudioFilesContainingNamePattern(self, filelist, filenamepart, skipAlreadyProcessedFiles=True):
+  def filterFilesAlreadyBeingTransformed(self, filelist, originalFilenamePattern, transformedFilenamepattern,
+      skipAlreadyProcessedFiles=True):
     processedFiles = []
     unprocessedFiles = []
-    filesContainingFilenamepart, filesNotContainingFilenamepart = self._filterFilesNamedLikeTheFilenamepart(filelist,
-                                                                                                            filenamepart)
+    filesContainingFilenamepart, filesNotContainingFilenamepart = self._filterFilesNamedLikeFilenamepattern(filelist,
+                                                                                                            transformedFilenamepattern)
 
     if (skipAlreadyProcessedFiles):
       self.logger.debug("Will remove original files from list too")
       processedFiles, unprocessedFiles = self._filterOriginalFilesIfFileWithFilenamepartIsPresent(
-          filesContainingFilenamepart, filesNotContainingFilenamepart, filenamepart)
+          filesContainingFilenamepart, filesNotContainingFilenamepart, transformedFilenamepattern,
+          originalFilenamePattern)
     else:
       processedFiles = filesContainingFilenamepart
       unprocessedFiles = filesNotContainingFilenamepart
 
     self.logger.debug(
         "Got {} files to process and {} already processed for filenamepart {} for initial list of length {}".format(
-            len(unprocessedFiles), len(processedFiles), filenamepart, len(filelist)))
+            len(unprocessedFiles), len(processedFiles), transformedFilenamepattern, len(filelist)))
     return processedFiles, unprocessedFiles
 
-  def _filterFilesNamedLikeTheFilenamepart(self, filelist, filenamepart):
+  def _filterFilesNamedLikeFilenamepattern(self, filelist, filenamepart):
     filesContainingFilenamepart = []
     filesNotContainingFilenamepart = []
     for file in filelist:
@@ -59,25 +61,32 @@ class FileHandlingObject(LoggingObject):
         filesNotContainingFilenamepart.append(file)
     return filesContainingFilenamepart, filesNotContainingFilenamepart
 
-  def _filterOriginalFilesIfFileWithFilenamepartIsPresent(self, filesContainingFilenamepart=[],
-      filesNotContainingFilenamepart=[], filenamepart=""):
+  def _filterOriginalFilesIfFileWithFilenamepartIsPresent(self, filesContainingTransformedFilenamepart=[],
+      filesNotContainingTransformedFilenamepart=[], transformedFilenamePattern="", originalFilenamePattern=""):
 
-    if (filesContainingFilenamepart == None):
-      filesContainingFilenamepart = []
-    if (filesNotContainingFilenamepart == None):
-      filesNotContainingFilenamepart = []
+    if (filesContainingTransformedFilenamepart == None):
+      filesContainingTransformedFilenamepart = []
+    if (filesNotContainingTransformedFilenamepart == None):
+      filesNotContainingTransformedFilenamepart = []
 
-    fileExtension = self._getFileExtension(filenamepart)
+    makeComparableString = "MAKE_COMPARABLE"
     # finding files with siblings
     candidatesForSiblings = set(
-        map(lambda filename: filename.replace(filenamepart, fileExtension), set(filesContainingFilenamepart)))
-    candidatesForOriginals = set(filesNotContainingFilenamepart)
+        map(lambda filename: filename.replace(transformedFilenamePattern, makeComparableString),
+            set(filesContainingTransformedFilenamepart)))
+    candidatesForOriginals = set(
+        map(lambda filename: filename.replace(originalFilenamePattern, makeComparableString),
+            set(filesNotContainingTransformedFilenamepart)))
     # find elements existing in both sets, i.e. having their processed counterpart already
     existingInBoth = candidatesForOriginals.intersection(candidatesForSiblings)
+    existingInBothWithOriginalFilenamePattern = [file.replace(makeComparableString, originalFilenamePattern) for file in
+                                                 existingInBoth]
     # remove all files with siblings
     # All files in their version of having filenamepart extended, not original
-    processedFiles = list(map(lambda filename: filename.replace(fileExtension, filenamepart), existingInBoth))
-    unprocessedFiles = list(set(filesNotContainingFilenamepart).difference(existingInBoth))
+    processedFiles = list(
+        map(lambda filename: filename.replace(makeComparableString, transformedFilenamePattern), existingInBoth))
+    unprocessedFiles = list(
+      set(filesNotContainingTransformedFilenamepart).difference(existingInBothWithOriginalFilenamePattern))
     return processedFiles, unprocessedFiles
 
   def _getFullFilenameWithoutExtension(self, fullpath):
@@ -92,10 +101,14 @@ class FileHandlingObject(LoggingObject):
   def _getFilenameWithExtension(self, fullpath):
     return os.path.basename(fullpath)
 
-  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
+  def _getAllMediaFilesInBasepathExcludingChunkedFiles(self, basepath, filetypes={".mp4", ".wav"}):
+    filelist = self._getAllMediaFilesInBasepath(basepath, filetypes)
+    return [file for file in filelist if not ("mono_chunk_" in file)]
+
+  def _getAllMediaFilesInBasepath(self, basepath, filetypes={".mp4", ".wav"}):
     filelist = []
     for dirpath, dirnames, filenames in os.walk(basepath):
-      for filename in [f for f in filenames if f.endswith(filetype)]:
+      for filename in [f for f in filenames if self._getFileExtension(f) in filetypes]:
         filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetypes, basepath))
     return filelist

@@ -40,13 +40,16 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.config = config
     self.mediaSessionActors.add(MediaSessionActor("UNKNOWN", Sex.UNKNOWN, None))
 
-  def _filterAudioFilesAlreadyBeingMono(self, filelist):
-    monofileHint = ".mono.wav"
-    return self.filterAudioFilesContainingNamePattern(filelist, monofileHint, self.skipAlreadyProcessedFiles())
+  def _filterAudioFilesAlreadyBeingMono(self, filelist, originalFilenamePattern=".wav"):
+    transformedFilenamePattern = ".mono.wav"
+    return self.filterFilesAlreadyBeingTransformed(filelist, originalFilenamePattern, transformedFilenamePattern,
+                                                   self.skipAlreadyProcessedFiles())
 
   def _filterAudioFilesAlreadyBeingChunked(self, filelist):
-    monofileHint = ".mono_chunk_"
-    return self.filterAudioFilesContainingNamePattern(filelist, monofileHint, self.skipAlreadyProcessedFiles())
+    transformedFilenamePattern = ".mono_chunk_"
+    originalFilenamePattern = ".wav"
+    return self.filterFilesAlreadyBeingTransformed(filelist, originalFilenamePattern, transformedFilenamePattern,
+                                                   self.skipAlreadyProcessedFiles())
 
   def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
     if ((wavFilenames == None) or (len(wavFilenames) == 0)):
@@ -83,8 +86,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
         self.logger.debug("Write chunk {} of file {}".format(i, file))
         splitter.write_wave(path, segment, sample_rate)
         audiochunkPathsForThisfile.append(path)
-      self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
-      os.remove(file)
+      self.logger.debug("Finished splitting file {}".format(file))
     except Exception as excep:
       self.logger.warn("Could split file into chunks {}. Skipping".format(file), exc_info=excep)
       return (False, str(file), [])  # returning an empty list, as no success here
@@ -92,8 +94,9 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
   def _convertMediafileToMonoAudio(self, basepath, filetype):
     self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
-    fileCandidatesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
-    successfulFilenames, unprocessedFilenames = self._filterAudioFilesAlreadyBeingMono(fileCandidatesToProcess)
+    fileCandidatesToProcess = self._getAllMediaFilesInBasepathExcludingChunkedFiles(basepath, {filetype, ".wav"})
+    successfulFilenames, unprocessedFilenames = self._filterAudioFilesAlreadyBeingMono(fileCandidatesToProcess,
+                                                                                       filetype)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
       futures = []
@@ -159,8 +162,9 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
 
   def toMetamodel(self):
     self.logger.debug("Untranscribed Video Korpus")
-    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".mp4")
-    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".mp4")
+    fileCandidatesToProcess = self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"})
+    audiochunks = self._splitMonoRawAudioToVoiceSections(fileCandidatesToProcess)
     annotationBundles = self._createMediaAnnotationBundles(audiochunks)
     return self._createMediaSession(annotationBundles)
 
@@ -180,8 +184,9 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
 
   def toMetamodel(self):
     self.logger.debug("CH-Jugendsprache Korpus")
-    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".WAV")
-    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
+    self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".WAV")
+    fileCandidatesToProcess = self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"})
+    audiochunks = self._splitMonoRawAudioToVoiceSections(fileCandidatesToProcess)
     annotationBundles = self._createMediaAnnotationBundles(audiochunks)
     return self._createMediaSession(annotationBundles)
 

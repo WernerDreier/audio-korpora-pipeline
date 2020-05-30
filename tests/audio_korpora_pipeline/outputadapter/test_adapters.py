@@ -66,7 +66,7 @@ class TestFairseqWav2VecAdapter:
     config = load_config("config.cfg.sample")
     config_logging(config)
 
-    inputAdapters = _createInputAdapters(config, ExistingInputAdapter.ARCHIMOB.value)
+    inputAdapters = _createInputAdapters(config, ExistingInputAdapter.UNTRANSCRIBED_VIDEO.value)
     outputAdapters = _createOutputAdapters(config, ExistingOutputAdapter.FAIRSEQ_WAV2VEC.value)
     # when
     metamodels = _transformInputsToMetamodel(inputAdapters)
