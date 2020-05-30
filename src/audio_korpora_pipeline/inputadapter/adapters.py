@@ -40,16 +40,8 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.config = config
     self.mediaSessionActors.add(MediaSessionActor("UNKNOWN", Sex.UNKNOWN, None))
 
-  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
-    filelist = []
-    for dirpath, dirnames, filenames in os.walk(basepath):
-      for filename in [f for f in filenames if f.endswith(filetype)]:
-        filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
-    return filelist
-
   def _filterAudioFilesAlreadyBeingMono(self, filelist):
-    monofileHint = ".mono"
+    monofileHint = ".mono.wav"
     return self.filterAudioFilesContainingNamePattern(filelist, monofileHint, self.skipAlreadyProcessedFiles())
 
   def _filterAudioFilesAlreadyBeingChunked(self, filelist):
@@ -69,8 +61,9 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     for future in as_completed(futures):
       if (future.result()[0] == False):
         self.logger.warning("Couldnt split audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        audiochunkPaths.extend(future.result()[2])
       self.logger.debug("Splitting Audio is done {}".format(future.result()))
-      audiochunkPaths.extend(future.result()[2])
     self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
     return audiochunkPaths
 
@@ -111,8 +104,9 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     for future in as_completed(futures):
       if (future.result()[0] == False):
         self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[2])
       self.logger.debug("Processing Audio is done {}".format(future.result()))
-      successfulFilenames.append(future.result()[2])
     return successfulFilenames
 
   def _convertMediafileToMonoAudioThread(self, filenumber, totalNumberOfFiles, singleFilepathToProcess):

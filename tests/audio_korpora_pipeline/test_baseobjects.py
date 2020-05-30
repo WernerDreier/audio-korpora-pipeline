@@ -25,7 +25,8 @@ class TestFileHandlingObject:
     containingfilenamepart = ["audio1.mono.wav", "audio2.mono.wav"]
     notContainingfilenamepart = ["audio1.wav", "audio2.wav", "audio3.wav", "audio4.NOWAV", "audio4.mono.NOWAV",
                                  "audio5.wav"]
-    shouldBeMarkedAsProcessed = {'audio1.mono.wav', 'audio2.mono.wav', 'audio2.wav', 'audio1.wav'}
+    shouldBeMarkedAsProcessed = {'audio1.mono.wav', 'audio2.mono.wav'}
+    # realize, that source files audio1.wav and audio2.wav (without mono) are removed from list
     shouldBeMarkedAsUnprocessed = {'audio4.NOWAV', 'audio4.mono.NOWAV', 'audio5.wav', 'audio3.wav'}
     handlingThing = FileHandlingObject()
     # when

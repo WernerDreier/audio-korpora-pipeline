@@ -41,11 +41,11 @@ def test_clearWorkingDirs():
 class TestFairseqWav2VecAdapter:
 
   def setup_method(self, method):
-    _clearWorkingDirs()
     print("Setup triggered")
 
   def test_from_metamodel_integration_test(self):
     # given
+    _clearWorkingDirs()  # Clear directories
     config = load_config("config.cfg.sample")
     config_logging(config)
 
@@ -59,3 +59,32 @@ class TestFairseqWav2VecAdapter:
     outputs = _transformMetamodelsToOutputs(metamodels, outputAdapters)
     # then
     # TODO check for proper output programatically, atm done manually
+
+  def test_small_integration_test_with_everything_already_in_place(self):
+    # given
+    # assuming test before has been run successfully and files are not deleted
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+
+    inputAdapters = _createInputAdapters(config, ExistingInputAdapter.ARCHIMOB.value)
+    outputAdapters = _createOutputAdapters(config, ExistingOutputAdapter.FAIRSEQ_WAV2VEC.value)
+    # when
+    metamodels = _transformInputsToMetamodel(inputAdapters)
+    outputs = _transformMetamodelsToOutputs(metamodels, outputAdapters)
+    # then
+    # TODO check for proper output programatically, atm done manually
+
+  def test_determine_files_to_resample(self):
+    # given
+    fullpaths = ["/source/test0.wav", "/source/abc/test1.wav", "/source/test2.wav", "/source/test3.wav"]
+    allExistingWavsInTargetFolder = ["/target/test1.wav", "/target/test2.wav", "/source/shouldnetbeHere_butignored.wav"]
+    expectedFilenames = ['/source/test0.wav', '/source/test3.wav']
+
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    outputAdapter = FairseqWav2VecAdapter(config)
+    # when
+    filesToProcess = outputAdapter._determineFilesToResampleAndCopy(fullpaths, allExistingWavsInTargetFolder)
+    # then
+    print(filesToProcess)
+    assert filesToProcess == expectedFilenames

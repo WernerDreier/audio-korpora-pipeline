@@ -10,12 +10,12 @@ import librosa
 import soundfile
 from quantulum3 import parser
 
-from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.baseobjects import FileHandlingObject
 from audio_korpora_pipeline.metamodel.mediasession import MediaSession
 from audio_korpora_pipeline.utils import winapi_path
 
 
-class Adapter(LoggingObject):
+class Adapter(FileHandlingObject):
   def __init__(self, config):
     super(Adapter, self).__init__()
 
@@ -30,6 +30,9 @@ class Adapter(LoggingObject):
     return skip
 
   def cleanOutputFolder(self):
+    if (self.skipAlreadyProcessedFiles()):
+      self.logger.info("Cleaning of output folder is ignored, as Parameter skipAlreadyProcessedFiles is set to true")
+      return
     self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
     # making sure all are empty when we start the process:
     shutil.rmtree(self._basePath(), ignore_errors=True)
@@ -309,8 +312,8 @@ class FairseqWav2VecAdapter(Adapter):
 
     self.logger.debug("Actual foldername is {}".format(foldername))
 
-    self._createMetadatafiles(mediaSession, foldername)
-    self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession, foldername)
+    successfulFiles, unsuccessfulFiles = self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession)
+    self._createMetadatafiles(mediaSession, foldername, unsuccessfulFiles)
     self._validateProcess(mediaSession)
 
     pass
@@ -332,7 +335,7 @@ class FairseqWav2VecAdapter(Adapter):
     os.makedirs(self._wav_file_path(), exist_ok=True)
     return foldername
 
-  def _createMetadatafiles(self, mediaSession, foldername):
+  def _createMetadatafiles(self, mediaSession, foldername, unsuccessfulFiles={}):
     self.logger.debug("Starting metadatafile-creation Fairseq Wav2Vec")
 
     # creating targetfiles
@@ -345,6 +348,10 @@ class FairseqWav2VecAdapter(Adapter):
                                                                                    newline="\n") as valid_f:
       for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
         try:
+          if (mediaAnnotationBundle.identifier in unsuccessfulFiles):
+            self.logger.debug("Skipping file {} for metadata as it could not successfully be copied before".format(
+                mediaAnnotationBundle.identifier))
+            continue
           currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
           frames = soundfile.info(mediaAnnotationBundle.identifier).frames
           dest = train_f if self.rand.random() > self._valid_percent() else valid_f
@@ -357,16 +364,33 @@ class FairseqWav2VecAdapter(Adapter):
           continue
       self.logger.info(
           "Wrote {} filenames to train and valid metadata files".format(len(mediaSession.mediaAnnotationBundles)))
-
+      self.logger.info(
+          "Skipped {} filenames due to previous errors".format(len(unsuccessfulFiles)))
     pass
 
-  def _resampleAndCopyAudioFilesFairseqWav2Vec(self, mediaSession, foldernames):
+  def _resampleAndCopyAudioFilesFairseqWav2Vec(self, mediaSession):
     self.logger.debug("Starting prepare and move audiofiles FairseqWav2Vec")
-    # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
-    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
-      # TODO: Multithread
-      self._actuallyWritingAudioToFilesystemThread(self._wav_file_path(), mediaAnnotationBundle.identifier)
-    pass
+    filesToProcess = [mediaAnnotationBundle.identifier for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles]
+    if (self.skipAlreadyProcessedFiles()):
+      allExistingWavs = self._getAllMediaFilesInBasepath(self._wav_file_path(), ".wav")
+      filesToProcess = self._determineFilesToResampleAndCopy(filesToProcess, allExistingWavs)
+
+    successfulFilenames = []
+    unsuccessfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for counter, fileToProcess in enumerate(filesToProcess):
+        # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
+        futures.append(
+            executor.submit(self._actuallyWritingAudioToFilesystemThread, self._wav_file_path(), fileToProcess))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        unsuccessfulFilenames.append(future.result()[1])
+        self.logger.warning("Couldn't copy and resample file {}. This file will be skipped".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[1])
+        self.logger.debug("Copied and resampled file {}.".format(future.result()[1]))
+    return successfulFilenames, unsuccessfulFilenames
 
   def _validateProcess(self, mediaSession):
     """
@@ -388,3 +412,18 @@ class FairseqWav2VecAdapter(Adapter):
 
   def _wav_file_path(self):
     return os.path.join(self._basePath(), "wavs")
+
+  def _determineFilesToResampleAndCopy(self, filesPotentiallyToProcess=[], allExistingWavs=[]):
+    allExistingWavs = set(allExistingWavs)
+    allExistingWavsWithoutPath = set(map(lambda filename: self._getFilenameWithExtension(filename), allExistingWavs))
+    allPotentialWavsWithoutPath = set(
+        map(lambda filename: self._getFilenameWithExtension(filename), filesPotentiallyToProcess))
+
+    filenamesOnlyToResample = allPotentialWavsWithoutPath.difference(allExistingWavsWithoutPath)
+    fullpathsToResample = list(
+        filter(lambda filename: self._getFilenameWithExtension(filename) in filenamesOnlyToResample,
+               filesPotentiallyToProcess))
+    self.logger.debug(
+        "From initially {} potential files to resample only {} remain to process as others are already existing and parameter skipAlreadyProcessedFiles is set to True".format(
+            len(filesPotentiallyToProcess), len(fullpathsToResample)))
+    return fullpathsToResample

@@ -158,6 +158,7 @@ class TestChJugendspracheAdapter:
     config_logging(config)
     adapter = ChJugendspracheAdapter(config)
     # when
+    
     metamodel = adapter.toMetamodel()
     # then
     assert len(metamodel.mediaSessionActors) == 1, "Muss genau einen Speaker (Unknown) enthalten"

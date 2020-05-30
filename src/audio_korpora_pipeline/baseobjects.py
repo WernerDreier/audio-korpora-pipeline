@@ -42,7 +42,7 @@ class FileHandlingObject(LoggingObject):
       unprocessedFiles = filesNotContainingFilenamepart
 
     self.logger.debug(
-        "Got {} files to process and {} already processed for filenamepart {} for given list of length {}".format(
+        "Got {} files to process and {} already processed for filenamepart {} for initial list of length {}".format(
             len(unprocessedFiles), len(processedFiles), filenamepart, len(filelist)))
     return processedFiles, unprocessedFiles
 
@@ -75,9 +75,9 @@ class FileHandlingObject(LoggingObject):
     # find elements existing in both sets, i.e. having their processed counterpart already
     existingInBoth = candidatesForOriginals.intersection(candidatesForSiblings)
     # remove all files with siblings
-    processedFiles = filesContainingFilenamepart
-    processedFiles.extend(list(existingInBoth))
-    unprocessedFiles = list(set(filesNotContainingFilenamepart).difference(set(processedFiles)))
+    # All files in their version of having filenamepart extended, not original
+    processedFiles = list(map(lambda filename: filename.replace(fileExtension, filenamepart), existingInBoth))
+    unprocessedFiles = list(set(filesNotContainingFilenamepart).difference(existingInBoth))
     return processedFiles, unprocessedFiles
 
   def _getFullFilenameWithoutExtension(self, fullpath):
@@ -91,3 +91,11 @@ class FileHandlingObject(LoggingObject):
 
   def _getFilenameWithExtension(self, fullpath):
     return os.path.basename(fullpath)
+
+  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
+    filelist = []
+    for dirpath, dirnames, filenames in os.walk(basepath):
+      for filename in [f for f in filenames if f.endswith(filetype)]:
+        filelist.append(os.path.join(dirpath, filename))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
+    return filelist
