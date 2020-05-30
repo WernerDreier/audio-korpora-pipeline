@@ -88,7 +88,8 @@ class TestUntranscribedVideoAdapter:
 class TestChJugendspracheAdapter:
 
   def setup_method(self, method):
-    clearWorkingDirs()
+    # clearWorkingDirs()
+    print("Setup")
 
   def test_ch_jugendsprache_extract_audio_from_long_audio_files(self):
     # given

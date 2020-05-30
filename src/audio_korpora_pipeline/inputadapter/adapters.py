@@ -71,11 +71,11 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
     return audiochunkPaths
 
-  def _splitMonoRawAudioToVoiceSectionsThread(self, file):
+  def _splitMonoRawAudioToVoiceSectionsThread(self, file, outputpath):
     self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
     splitter = Splitter()
     vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
-    basename = self._getFullFilenameWithoutExtension(file)
+    basename = self._getFilenameWithoutExtension(file)
     audiochunkPathsForThisfile = []
     try:
       audio, sample_rate = splitter.read_wave(file)
@@ -83,10 +83,14 @@ class UntranscribedMediaSplittingAdapter(Adapter):
       frames = list(frames)
       segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
       for i, segment in enumerate(segments):
-        path = basename + '_chunk_{:05d}.wav'.format(i)
+        path = os.path.join(outputpath, basename + '_chunk_{:05d}.wav'.format(i))
         self.logger.debug("Write chunk {} of file {}".format(i, file))
         splitter.write_wave(path, segment, sample_rate)
         audiochunkPathsForThisfile.append(path)
+      # write staging complete file
+      stagingPath = os.path.join(outputpath, basename + ".stagingComplete")
+      with open(stagingPath, 'a'):
+        os.utime(stagingPath, None)
       self.logger.debug("Finished splitting file {}".format(file))
     except Exception as excep:
       self.logger.warn("Could split file into chunks {}. Skipping".format(file), exc_info=excep)
@@ -182,8 +186,127 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
   def toMetamodel(self):
     self.logger.debug("CH-Jugendsprache Korpus")
     # convert audio to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineChJugendspracheFilesToConvertToMono()
+    filesSuccessfullyProcessed = self._convertAudioFilesToMonoAudio(filesToProcess, self._validateStagingMonoPath())
+    baseFilesToChunk = []
+    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
     # convert mono audio to chunks
+    filesToChunk, filesAlreadyChunked = self._determineChJugendspracheFilesToChunk(baseFilesToChunk)
+    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, self._validateStagingChunksPath())
     # add chunks to media session
+    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
+    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self._createMediaSession(mediaAnnotationbundles)
+    return mediaSession
+
+  def _determineChJugendspracheFilesToConvertToMono(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".WAV"}))
+    self.logger.debug("Got {} original jugendsprache files to process".format(len(originalFiles)))
+
+    notYetProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).difference(
+        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
+    alreadyProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).intersection(
+        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
+
+    fullpathsToNotYetProcessed = []
+    for fullpath in originalFiles:
+      for filename in notYetProcessed:
+        if filename in fullpath:
+          fullpathsToNotYetProcessed.append(fullpath)
+
+    fullpathsProcessed = []
+    for fullpath in originalFiles:
+      for filename in alreadyProcessed:
+        if filename in fullpath:
+          fullpathsProcessed.append(fullpath)
+
+    self.logger.debug("Got {} jugendsprache files not yet processed".format(len(notYetProcessed)))
+    self.logger.debug("Got {} jugendsprache files already processed".format(len(alreadyProcessed)))
+    return fullpathsToNotYetProcessed, fullpathsProcessed
+
+  def _validateStagingMonoPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("ch_jugensprache_staging_mono")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _validateStagingChunksPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("ch_jugensprache_staging_chunks")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _convertAudioFilesToMonoAudio(self, filesToProcess, outputpath):
+    if (filesToProcess == None or len(filesToProcess) == 0):
+      self.logger.debug("No files to convert for jugendsprache, skipping")
+      return []
+
+    successfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, currentFile in enumerate(filesToProcess):
+        futures.append(
+            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(filesToProcess),
+                            currentFile, outputpath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[2])
+      self.logger.debug("Processing Audio is done {}".format(future.result()))
+
+    return successfulFilenames
+
+  def _determineChJugendspracheFilesToChunk(self, baseFilesToChunk):
+    allStageIndicatorFilesFullpath = set(
+        self._getAllMediaFilesInBasepath(self._validateStagingChunksPath(), {".stagingComplete"}))
+    allExistingChunkedFilesFullpath = set(
+        self._getAllMediaFilesInBasepath(self._validateStagingChunksPath(), {".wav"}))
+    allStageIndicatorFiles = [self._getFilenameWithoutExtension(file) for file in allStageIndicatorFilesFullpath]
+    allBaseFilesWithoutExtension = set([self._getFilenameWithoutExtension(file) for file in baseFilesToChunk])
+    stagingCompleteCorrect = allBaseFilesWithoutExtension.intersection(allStageIndicatorFiles)
+    stagingIncompleteCorrect = allBaseFilesWithoutExtension.difference(allStageIndicatorFiles)
+
+    stagingComplete = []
+    for fullpath in allExistingChunkedFilesFullpath:
+      for filename in stagingCompleteCorrect:
+        if filename in fullpath:
+          stagingComplete.append(fullpath)
+
+    stagingIncomplete = []
+    for fullpath in baseFilesToChunk:
+      for filename in stagingIncompleteCorrect:
+        if filename in fullpath:
+          stagingIncomplete.append(fullpath)
+
+    self.logger.debug("Got {} ch jugensprache files not yet chunked".format(len(stagingIncomplete)))
+    self.logger.debug("Got {} ch jugensprache files chunked".format(len(stagingComplete)))
+    return stagingIncomplete, stagingComplete
+
+  def _splitAudioToChunks(self, filesToChunk, outputPath):
+    if ((filesToChunk == None) or (len(filesToChunk) == 0)):
+      self.logger.info("Nothing to split, received empty wav-filenamelist")
+      return []
+
+    successfullyChunkedFiles = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(filesToChunk):
+        futures.append(
+            executor.submit(self._splitMonoRawAudioToVoiceSectionsThread, file, outputPath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt split audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfullyChunkedFiles.extend(future.result()[2])
+      self.logger.debug("Splitting Audio is done {}".format(future.result()))
+    self.logger.debug("Finished splitting {} wav files".format(len(filesToChunk)))
+    return successfullyChunkedFiles
 
 
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
