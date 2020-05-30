@@ -123,11 +123,11 @@ class UntranscribedMediaSplittingAdapter(Adapter):
           .run(capture_stdout=True, capture_stderr=True)
       )
     except ffmpeg.Error as ffmpgError:
-      self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
-      self.logger.warn("Due to error of ffmpeg skipped file {}", singleFilepathToProcess)
+      self.logger.warn("Ffmpeg rose an error", exc_info=ffmpgError)
+      self.logger.warn("Due to error of ffmpeg skipped file {}".format(singleFilepathToProcess))
       return (False, str(singleFilepathToProcess), str(nextFilename))
     except Exception as e:
-      self.logger.warn("Got an error while using ffmpeg for file {}", singleFilepathToProcess, exc_info=e)
+      self.logger.warn("Got an error while using ffmpeg for file {}".format(singleFilepathToProcess), exc_info=e)
       return (False, str(singleFilepathToProcess), str(nextFilename))
     return (True, str(singleFilepathToProcess), str(nextFilename))
 
