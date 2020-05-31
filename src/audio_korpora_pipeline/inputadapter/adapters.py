@@ -178,7 +178,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
         if filename in fullpath:
           fullpathsToNotYetProcessed.append(fullpath)
     fullpathsProcessed = []
-    for fullpath in originalFiles:
+    for fullpath in alreadyStagedFiles:
       for filename in alreadyProcessed:
         if filename in fullpath:
           fullpathsProcessed.append(fullpath)
