@@ -120,7 +120,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
   def _convertMediafileToMonoAudioThread(self, filenumber, totalNumberOfFiles, singleFilepathToProcess, outputPath):
     self.logger.debug(
         "Processing file {}/{} on path {}".format(filenumber + 1, totalNumberOfFiles, singleFilepathToProcess))
-    nextFilename = os.path.join(outputPath, self._getFilenameWithExtension(singleFilepathToProcess))
+    nextFilename = os.path.join(outputPath, self._getFilenameWithoutExtension(singleFilepathToProcess) + ".wav")
     try:
       (ffmpeg
        .input(singleFilepathToProcess)
@@ -166,8 +166,75 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
   def toMetamodel(self):
     self.logger.debug("Untranscribed Video Korpus")
     # convert video to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineVideoFilesToConvertToMono()
+    filesSuccessfullyProcessed = self._convertVideoFilesToMonoAudio(filesToProcess, self._validateStagingMonoPath())
+    baseFilesToChunk = []
+    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
     # split mono audio to chunks
     # add chunks to media session
+
+  def _validateStagingMonoPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("untranscribed_video_staging_mono")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _validateStagingChunksPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("untranscribed_video_staging_chunks")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _determineVideoFilesToConvertToMono(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".mp4"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
+    self.logger.debug("Got {} original untranscribed mp4 files to process".format(len(originalFiles)))
+
+    notYetProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).difference(
+        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
+    alreadyProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).intersection(
+        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
+
+    fullpathsToNotYetProcessed = []
+    for fullpath in originalFiles:
+      for filename in notYetProcessed:
+        if filename in fullpath:
+          fullpathsToNotYetProcessed.append(fullpath)
+
+    fullpathsProcessed = []
+    for fullpath in originalFiles:
+      for filename in alreadyProcessed:
+        if filename in fullpath:
+          fullpathsProcessed.append(fullpath)
+
+    self.logger.debug("Got {} untranscribed video files not yet processed".format(len(notYetProcessed)))
+    self.logger.debug("Got {} untranscribed video files already processed".format(len(alreadyProcessed)))
+    return fullpathsToNotYetProcessed, fullpathsProcessed
+
+  def _convertVideoFilesToMonoAudio(self, filesToProcess, outputpath):
+    if (filesToProcess == None or len(filesToProcess) == 0):
+      self.logger.debug("No files to convert for untranscribed video, skipping")
+      return []
+
+    successfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, currentFile in enumerate(filesToProcess):
+        futures.append(
+            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(filesToProcess),
+                            currentFile, outputpath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[2])
+      self.logger.debug("Processing Audio is done {}".format(future.result()))
+
+    return successfulFilenames
 
 
 class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
@@ -201,7 +268,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
 
   def _determineChJugendspracheFilesToConvertToMono(self):
     originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV"}))
-    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".WAV"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
     self.logger.debug("Got {} original jugendsprache files to process".format(len(originalFiles)))
 
     notYetProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).difference(

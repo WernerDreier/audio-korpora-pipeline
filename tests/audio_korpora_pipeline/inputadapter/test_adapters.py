@@ -33,7 +33,8 @@ class TestUntranscribedMediaSplitterAdapter:
 class TestUntranscribedVideoAdapter:
 
   def setup_method(self, method):
-    clearWorkingDirs()
+    # clearWorkingDirs()
+    print("setup")
 
   def test_untranscribed_extract_audio_from_video(self):
     # given
@@ -83,6 +84,19 @@ class TestUntranscribedVideoAdapter:
             duration = frames / float(rate)
             assert duration > 1, "Every audio chunk must be at least 2 seconds long"
             assert duration < 19, "Every audio chunk must be at most 18 seconds long"
+
+  def test_untranscribed_video_returns_media_session(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = UntranscribedVideoAdapter(config)
+    # when
+
+    metamodel = adapter.toMetamodel()
+    # then
+    assert len(metamodel.mediaSessionActors) == 1, "Muss genau einen Speaker (Unknown) enthalten"
+    assert metamodel.mediaSessionActors.pop().id == "UNKNOWN", "Muss genau einen Speaker (Unknown) enthalten"
+    assert len(metamodel.mediaAnnotationBundles) > 2, "Muss mehr als ein Media bundle enthalten"
 
 
 class TestChJugendspracheAdapter:
