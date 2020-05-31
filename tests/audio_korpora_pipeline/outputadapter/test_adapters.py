@@ -74,21 +74,6 @@ class TestFairseqWav2VecAdapter:
     # then
     # TODO check for proper output programatically, atm done manually
 
-  def test_determine_files_to_resample(self):
-    # given
-    fullpaths = ["/source/test0.wav", "/source/abc/test1.wav", "/source/test2.wav", "/source/test3.wav"]
-    allExistingWavsInTargetFolder = ["/target/test1.wav", "/target/test2.wav", "/source/shouldnetbeHere_butignored.wav"]
-    expectedFilenames = ['/source/test0.wav', '/source/test3.wav']
-
-    config = load_config("config.cfg.sample")
-    config_logging(config)
-    outputAdapter = FairseqWav2VecAdapter(config)
-    # when
-    filesToProcess = outputAdapter._determineFilesToResampleAndCopy(fullpaths, allExistingWavsInTargetFolder)
-    # then
-    print(filesToProcess)
-    assert filesToProcess == expectedFilenames
-
   def test_validate_tsv(self):
     # given
     allExistingWavsInTargetFolder = [

@@ -4,6 +4,8 @@ import os
 import random
 import shutil
 from concurrent.futures import as_completed
+from datetime import datetime
+from statistics import mean, stdev, median
 from time import gmtime, strftime
 
 import librosa
@@ -435,7 +437,8 @@ class FairseqWav2VecAdapter(Adapter):
 
   def _validate_all_files_named_within_metadata_files_exist(self):
     minimumFrameLengthForValidAudio = 16000  # 1sec. given that sample-rate is 16k
-    allExistingWavs = set(self._getFilenameWithExtension(self._getAllMediaFilesInBasepath(self._basePath(), {".wav"})))
+    allExistingWavs = set(map(lambda filename: self._getFilenameWithExtension(filename),
+                              self._getAllMediaFilesInBasepath(self._wav_file_path(), {".wav"})))
     self._validate_tsv_file(allExistingWavs, "train.tsv", minimumFrameLengthForValidAudio)
     self._validate_tsv_file(allExistingWavs, "valid.tsv", minimumFrameLengthForValidAudio)
     pass
@@ -473,3 +476,36 @@ class FairseqWav2VecAdapter(Adapter):
         modified.write(firstRowOfMetadata + data)
     else:
       self.logger.info("Validated {} FairseqWav2Vec Metadata successfully".format(tsvFilename))
+
+  def _writeSummary(self):
+    filename = os.path.join(self._basePath(), "summary.log")
+    with open(filename, 'w', newline="\n") as summaryFile:
+      summaryFile.write("Corpus processed on {}\n".format(datetime.now()))
+      self._writeStatistics(summaryFile, "train.tsv")
+      self._writeStatistics(summaryFile, "valid.tsv")
+    pass
+
+  def _statisticsOfMetadataFile(self, filename):
+    metadatafile = os.path.join(self._basePath(), filename)
+    framerate = 16000
+    files = pandas.read_csv(metadatafile, sep="\\t", skiprows=1, encoding="UTF-8", header=None)
+    files.columns = ["filename", "frames"]
+
+    totalDurationInSeconds = sum(files.frames / framerate)
+    meanDurationInSeconds = mean(files.frames / framerate)
+    medianDurationInSeconds = median(files.frames / framerate)
+    stdDurationInSeconds = stdev(files.frames / framerate)
+    countOfFiles = len(files)
+    return countOfFiles, totalDurationInSeconds, meanDurationInSeconds, medianDurationInSeconds, stdDurationInSeconds
+
+  def _writeStatistics(self, filehandle, filename):
+    countOfFiles, totalDurationInSeconds, meanDurationInSeconds, medianDurationInSeconds, stdDurationInSeconds = self._statisticsOfMetadataFile(
+        filename)
+    filehandle.write("\n\n\n--- Statistics for file {} ---\n".format(filename))
+    filehandle.write("\nCount of datafiles {}".format(countOfFiles))
+    filehandle.write("\nTotal duration in seconds {}".format(totalDurationInSeconds))
+    filehandle.write("\nTotal duration in hours {}".format(totalDurationInSeconds / 3600))
+    filehandle.write("\nMean duration in seconds {}".format(meanDurationInSeconds))
+    filehandle.write("\nMedian duration in seconds {}".format(medianDurationInSeconds))
+    filehandle.write("\nStandard deviation of duration in seconds {}".format(stdDurationInSeconds))
+    pass
