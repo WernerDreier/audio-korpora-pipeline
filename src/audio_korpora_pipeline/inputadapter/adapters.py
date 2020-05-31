@@ -183,8 +183,23 @@ class UntranscribedMediaSplittingAdapter(Adapter):
         if filename in fullpath:
           fullpathsProcessed.append(fullpath)
     self.logger.debug("Got {} files not yet processed for corpus {}".format(len(notYetProcessed), adaptername))
-    self.logger.debug("Got {} files already processed for corpus {}".format(len(alreadyProcessed), self.adaptername))
+    self.logger.debug("Got {} files already processed for corpus {}".format(len(alreadyProcessed), adaptername))
     return fullpathsToNotYetProcessed, fullpathsProcessed
+
+  def _preprocess_workflow_with_splitting(self, filesAlreadyProcessed, filesToProcess, monoPath, chunkPath,
+      adaptername):
+    filesSuccessfullyProcessed = self._convertMediaFilesToMonoAudio(filesToProcess, monoPath, adaptername)
+    baseFilesToChunk = []
+    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
+    # split mono audio to chunks
+    filesToChunk, filesAlreadyChunked = self._determineWavFilesToChunk(baseFilesToChunk,
+                                                                       chunkPath)
+    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, chunkPath)
+    # add chunks to media session
+    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
+    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self._createMediaSession(mediaAnnotationbundles)
+    return mediaSession
 
 
 class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
@@ -194,29 +209,19 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
     super(UntranscribedVideoAdapter, self).__init__(config=config)
     self.config = config
 
+  def toMetamodel(self):
+    self.logger.debug("Untranscribed Video Korpus")
+    # convert video to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineVideoFilesToConvertToMono()
+    return self._preprocess_workflow_with_splitting(filesAlreadyProcessed, filesToProcess,
+                                                    self._validateStagingMonoPath(), self._validateStagingChunksPath(),
+                                                    self.ADAPTERNAME)
+
   def _validateKorpusPath(self):
     korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
     if not os.path.isdir(korpus_path):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
-
-  def toMetamodel(self):
-    self.logger.debug("Untranscribed Video Korpus")
-    # convert video to mono audio
-    filesToProcess, filesAlreadyProcessed = self._determineVideoFilesToConvertToMono()
-    filesSuccessfullyProcessed = self._convertMediaFilesToMonoAudio(filesToProcess, self._validateStagingMonoPath(),
-                                                                    self.ADAPTERNAME)
-    baseFilesToChunk = []
-    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
-    # split mono audio to chunks
-    filesToChunk, filesAlreadyChunked = self._determineWavFilesToChunk(baseFilesToChunk,
-                                                                       self._validateStagingChunksPath())
-    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, self._validateStagingChunksPath())
-    # add chunks to media session
-    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
-    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
-    mediaSession = self._createMediaSession(mediaAnnotationbundles)
-    return mediaSession
 
   def _validateStagingMonoPath(self):
     workdir = self.config['global']['workdir']
@@ -249,29 +254,13 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     super(ChJugendspracheAdapter, self).__init__(config=config)
     self.config = config
 
-  def _validateKorpusPath(self):
-    korpus_path = self.config['ch_jugendsprache_input_adapter']['korpus_path']
-    if not os.path.isdir(korpus_path):
-      raise IOError("Could not read korpus path" + korpus_path)
-    return korpus_path
-
   def toMetamodel(self):
     self.logger.debug("CH-Jugendsprache Korpus")
     # convert audio to mono audio
     filesToProcess, filesAlreadyProcessed = self._determineChJugendspracheFilesToConvertToMono()
-    filesSuccessfullyProcessed = self._convertMediaFilesToMonoAudio(filesToProcess, self._validateStagingMonoPath(),
-                                                                    self.ADAPTERNAME)
-    baseFilesToChunk = []
-    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
-    # convert mono audio to chunks
-    filesToChunk, filesAlreadyChunked = self._determineWavFilesToChunk(baseFilesToChunk,
-                                                                       self._validateStagingChunksPath())
-    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, self._validateStagingChunksPath())
-    # add chunks to media session
-    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
-    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
-    mediaSession = self._createMediaSession(mediaAnnotationbundles)
-    return mediaSession
+    return self._preprocess_workflow_with_splitting(filesToProcess, filesAlreadyProcessed,
+                                                    self._validateStagingMonoPath(), self._validateStagingChunksPath(),
+                                                    self.ADAPTERNAME)
 
   def _determineChJugendspracheFilesToConvertToMono(self):
     originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV"}))
@@ -295,6 +284,12 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     workdir = Path(workdir).joinpath("ch_jugensprache_staging_chunks")
     workdir.mkdir(parents=True, exist_ok=True)
     return str(workdir)
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['ch_jugendsprache_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
 
 
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
@@ -321,6 +316,13 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     workdir.mkdir(parents=True, exist_ok=True)
     return str(workdir)
 
+  def _determineArchimobFilesToProcess(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
+    self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
+
+    return self._determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+
   def toMetamodel(self):
     self.logger.debug("Archimob V2 Korpus")
     # convert chunks to mono audio
@@ -333,13 +335,6 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     mediaAnnotationbundles = self._createMediaAnnotationBundles(filesForMediaBundle)
     mediaSession = self._createMediaSession(mediaAnnotationbundles)
     return mediaSession
-
-  def _determineArchimobFilesToProcess(self):
-    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"}))
-    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
-    self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
-
-    return self._determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
 
 
 class CommonVoiceAdapter(Adapter):
