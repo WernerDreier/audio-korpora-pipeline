@@ -171,7 +171,13 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
     baseFilesToChunk = []
     baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
     # split mono audio to chunks
+    filesToChunk, filesAlreadyChunked = self._determineUntranscribedVideoFilesToChunk(baseFilesToChunk)
+    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, self._validateStagingChunksPath())
     # add chunks to media session
+    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
+    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self._createMediaSession(mediaAnnotationbundles)
+    return mediaSession
 
   def _validateStagingMonoPath(self):
     workdir = self.config['global']['workdir']
@@ -235,6 +241,52 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
       self.logger.debug("Processing Audio is done {}".format(future.result()))
 
     return successfulFilenames
+
+  def _determineUntranscribedVideoFilesToChunk(self, baseFilesToChunk):
+    allStageIndicatorFilesFullpath = set(
+        self._getAllMediaFilesInBasepath(self._validateStagingChunksPath(), {".stagingComplete"}))
+    allExistingChunkedFilesFullpath = set(
+        self._getAllMediaFilesInBasepath(self._validateStagingChunksPath(), {".wav"}))
+    allStageIndicatorFiles = [self._getFilenameWithoutExtension(file) for file in allStageIndicatorFilesFullpath]
+    allBaseFilesWithoutExtension = set([self._getFilenameWithoutExtension(file) for file in baseFilesToChunk])
+    stagingCompleteCorrect = allBaseFilesWithoutExtension.intersection(allStageIndicatorFiles)
+    stagingIncompleteCorrect = allBaseFilesWithoutExtension.difference(allStageIndicatorFiles)
+
+    stagingComplete = []
+    for fullpath in allExistingChunkedFilesFullpath:
+      for filename in stagingCompleteCorrect:
+        if filename in fullpath:
+          stagingComplete.append(fullpath)
+
+    stagingIncomplete = []
+    for fullpath in baseFilesToChunk:
+      for filename in stagingIncompleteCorrect:
+        if filename in fullpath:
+          stagingIncomplete.append(fullpath)
+
+    self.logger.debug("Got {} untranscribed video files not yet chunked".format(len(stagingIncomplete)))
+    self.logger.debug("Got {} untranscribed video files chunked".format(len(stagingComplete)))
+    return stagingIncomplete, stagingComplete
+
+  def _splitAudioToChunks(self, filesToChunk, outputPath):
+    if ((filesToChunk == None) or (len(filesToChunk) == 0)):
+      self.logger.info("Nothing to split, received empty wav-filenamelist")
+      return []
+
+    successfullyChunkedFiles = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(filesToChunk):
+        futures.append(
+            executor.submit(self._splitMonoRawAudioToVoiceSectionsThread, file, outputPath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt split audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfullyChunkedFiles.extend(future.result()[2])
+      self.logger.debug("Splitting Audio is done {}".format(future.result()))
+    self.logger.debug("Finished splitting {} wav files".format(len(filesToChunk)))
+    return successfullyChunkedFiles
 
 
 class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
