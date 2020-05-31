@@ -88,3 +88,28 @@ class TestFairseqWav2VecAdapter:
     # then
     print(filesToProcess)
     assert filesToProcess == expectedFilenames
+
+  def test_validate_tsv(self):
+    # given
+    allExistingWavsInTargetFolder = [
+      "1 gegen 100-1 gegen 100 – Jahresrückblick mit Angélique Beldner-0943170628_chunk_00014.wav",
+      "1 gegen 100-1 gegen 100 – Jahresrückblick mit Angélique Beldner-0943170628_chunk_00016.wav",
+      "shouldnetbeHere_butignored.wav"]
+
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    outputAdapter = FairseqWav2VecAdapter(config)
+    self._createDummyFileToValidate(outputAdapter._validateBasePath())
+    # when
+    filesToProcess = outputAdapter._validate_tsv_file(allExistingWavsInTargetFolder, "dummy.tsv", 16000)
+    # then
+    print(filesToProcess)
+
+  def _createDummyFileToValidate(self, path):
+    f = open(os.path.join(path, "dummy.tsv"), "w", encoding="UTF-8", newline="\n")
+    f.write(
+        "C:\\dev\\datascience-repositories\\audio_korpora_pipeline\\tests\\resources\\korpora\\output\\fairseqWav2Vec\\wavs\n")
+    f.write("1 gegen 100-1 gegen 100 – Jahresrückblick mit Angélique Beldner-0943170628_chunk_00014.wav\t121920\n")
+    f.write("I am not copied correctly.wav	121920\n")
+    f.write("1 gegen 100-1 gegen 100 – Jahresrückblick mit Angélique Beldner-0943170628_chunk_00016.wav\t68123")
+    f.close()

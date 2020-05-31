@@ -7,6 +7,7 @@ from concurrent.futures import as_completed
 from time import gmtime, strftime
 
 import librosa
+import pandas
 import soundfile
 from quantulum3 import parser
 
@@ -308,7 +309,7 @@ class FairseqWav2VecAdapter(Adapter):
       raise ValueError("MediaSession be of type MediaSession")
 
     self.logger.debug("FairseqWav2Vec Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    foldername = self._createFolderStructureAccordingToFairseqWav2Vec(mediaSession)
+    foldername = self._createFolderStructureAccordingToFairseqWav2Vec()
 
     self.logger.debug("Actual foldername is {}".format(foldername))
 
@@ -324,7 +325,7 @@ class FairseqWav2VecAdapter(Adapter):
   def _valid_percent(self):
     return float(self.config['fairseq_wav2vec_output_adapter']['valid_percent'])
 
-  def _createFolderStructureAccordingToFairseqWav2Vec(self, mediaSession):
+  def _createFolderStructureAccordingToFairseqWav2Vec(self):
     """
 
     :return: there is only one output path, as we dont keep track of source on folder level
@@ -335,7 +336,9 @@ class FairseqWav2VecAdapter(Adapter):
     os.makedirs(self._wav_file_path(), exist_ok=True)
     return foldername
 
-  def _createMetadatafiles(self, mediaSession, foldername, unsuccessfulFiles={}):
+  def _createMetadatafiles(self, mediaSession, foldername, unsuccessfulFiles=None):
+    if unsuccessfulFiles is None:
+      unsuccessfulFiles = {}
     self.logger.debug("Starting metadatafile-creation Fairseq Wav2Vec")
 
     # creating targetfiles
@@ -399,6 +402,8 @@ class FairseqWav2VecAdapter(Adapter):
     :return:
     """
     self.logger.debug("Validate FairseqWav2Vec")
+    self._validate_all_files_named_within_metadata_files_exist()
+    self._writeSummary()
     # make sure only files within metadatafiles are mentioned, that exist within wav-folders and vice-versa
     # make sure no duration is less than 1 second (arbitrary size, just longer than zero, e.g. not corrupt)
     pass
@@ -424,6 +429,47 @@ class FairseqWav2VecAdapter(Adapter):
         filter(lambda filename: self._getFilenameWithExtension(filename) in filenamesOnlyToResample,
                filesPotentiallyToProcess))
     self.logger.debug(
-        "From initially {} potential files to resample only {} remain to process as others are already existing and parameter skipAlreadyProcessedFiles is set to True".format(
+        "From initially {} potential files to resample {} remain to process as others are already existing and parameter skipAlreadyProcessedFiles is set to True".format(
             len(filesPotentiallyToProcess), len(fullpathsToResample)))
     return fullpathsToResample
+
+  def _validate_all_files_named_within_metadata_files_exist(self):
+    minimumFrameLengthForValidAudio = 16000  # 1sec. given that sample-rate is 16k
+    allExistingWavs = set(self._getFilenameWithExtension(self._getAllMediaFilesInBasepath(self._basePath(), {".wav"})))
+    self._validate_tsv_file(allExistingWavs, "train.tsv", minimumFrameLengthForValidAudio)
+    self._validate_tsv_file(allExistingWavs, "valid.tsv", minimumFrameLengthForValidAudio)
+    pass
+
+  def _validate_tsv_file(self, allExistingWavs, tsvFilename, minimumFrameLengthForValidAudio):
+    metadatafile = os.path.join(self._basePath(), tsvFilename)
+    with open(metadatafile) as f:
+      firstRowOfMetadata = f.readline()
+    allFilesMentionedInMetadata = pandas.read_csv(metadatafile, sep="\\t", skiprows=1,
+                                                  encoding="UTF-8", header=None)
+    allFilesMentionedInMetadata.columns = ["filename", "frames"]
+    filesNotBeingCopied = set(allFilesMentionedInMetadata.filename).difference(allExistingWavs)
+    filesBeingToShortInFrames = set(
+        allFilesMentionedInMetadata[allFilesMentionedInMetadata.frames < minimumFrameLengthForValidAudio].filename)
+    allFilesNotOk = filesNotBeingCopied.union(filesBeingToShortInFrames)
+    if (len(allFilesNotOk) > 0):
+      self.logger.warn(
+          "While validating file {} got {} files not being ok (out of {} files), which are therefore removed.\nA backup of the original file is created with suffix unvalidated_backup".format(
+              tsvFilename,
+              len(allFilesNotOk), len(allFilesMentionedInMetadata)))
+      shutil.copyfile(os.path.join(self._basePath(), tsvFilename),
+                      os.path.join(self._basePath(), tsvFilename + ".unvalidated_backup"))
+      for fileNotOk in allFilesNotOk:
+        if (fileNotOk in filesNotBeingCopied):
+          self.logger.debug("File {} is not correctly copied, ignoring".format(fileNotOk))
+        if (fileNotOk in filesBeingToShortInFrames):
+          self.logger.debug("File {} is to short, ignoring".format(fileNotOk))
+      allTrainFilesCleaned = allFilesMentionedInMetadata[~allFilesMentionedInMetadata.filename.isin(allFilesNotOk)]
+      os.remove(os.path.join(self._basePath(), tsvFilename))
+      allTrainFilesCleaned.to_csv(metadatafile, sep="\t", encoding="UTF-8", header=None, index=None,
+                                  line_terminator="\n")
+      with open(metadatafile, 'r') as original:
+        data = original.read()
+      with open(metadatafile, 'w', newline="\n") as modified:
+        modified.write(firstRowOfMetadata + data)
+    else:
+      self.logger.info("Validated {} FairseqWav2Vec Metadata successfully".format(tsvFilename))
