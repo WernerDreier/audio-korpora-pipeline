@@ -263,7 +263,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
                                                     self.ADAPTERNAME)
 
   def _determineChJugendspracheFilesToConvertToMono(self):
-    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV"}))
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV", ".wav"}))
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
     self.logger.debug("Got {} original jugendsprache files to process".format(len(originalFiles)))
 
