@@ -88,11 +88,11 @@ class UntranscribedMediaSplittingAdapter(Adapter):
       return (False, str(singleFilepathToProcess), str(nextFilename))
     return (True, str(singleFilepathToProcess), str(nextFilename))
 
-  def _createMediaSession(self, bundles):
+  def createMediaSession(self, bundles):
     session = MediaSession(self.ADAPTERNAME, self.mediaSessionActors, bundles)
     return session
 
-  def _createMediaAnnotationBundles(self, audiochunks):
+  def createMediaAnnotationBundles(self, audiochunks):
     annotationBundles = []
     for index, filepath in enumerate(audiochunks):
       bundle = MediaAnnotationBundleWithoutTranscription(identifier=filepath)  # we do not have any written ressources
@@ -100,7 +100,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
       annotationBundles.append(bundle)
     return annotationBundles
 
-  def _splitAudioToChunks(self, filesToChunk, outputPath):
+  def splitAudioToChunks(self, filesToChunk, outputPath):
     if ((filesToChunk == None) or (len(filesToChunk) == 0)):
       self.logger.info("Nothing to split, received empty wav-filenamelist")
       return []
@@ -120,7 +120,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.logger.debug("Finished splitting {} wav files".format(len(filesToChunk)))
     return successfullyChunkedFiles
 
-  def _determineWavFilesToChunk(self, baseFilesToChunk, stagingChunkPath):
+  def determineWavFilesToChunk(self, baseFilesToChunk, stagingChunkPath):
     allStageIndicatorFilesFullpath = set(
         self._getAllMediaFilesInBasepath(stagingChunkPath, {".stagingComplete"}))
     allExistingChunkedFilesFullpath = set(
@@ -146,7 +146,7 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.logger.debug("Got {} files chunked".format(len(stagingComplete)))
     return stagingIncomplete, stagingComplete
 
-  def _convertMediaFilesToMonoAudio(self, filesToProcess, outputpath, adapterName):
+  def convertMediaFilesToMonoAudio(self, filesToProcess, outputpath, adapterName):
     if (filesToProcess == None or len(filesToProcess) == 0):
       self.logger.debug("No files to convert for {}, skipping".format(adapterName))
       return []
@@ -167,11 +167,11 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
     return successfulFilenames
 
-  def _determineFilesToConvertToMonoFromGivenLists(self, alreadyStagedFiles, originalFiles, adaptername):
-    notYetProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).difference(
-        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
-    alreadyProcessed = set([self._getFilenameWithExtension(file) for file in originalFiles]).intersection(
-        set([self._getFilenameWithExtension(file) for file in alreadyStagedFiles]))
+  def determineFilesToConvertToMonoFromGivenLists(self, alreadyStagedFiles, originalFiles, adaptername):
+    notYetProcessed = set([self._getFilenameWithoutExtension(file) for file in originalFiles]).difference(
+        set([self._getFilenameWithoutExtension(file) for file in alreadyStagedFiles]))
+    alreadyProcessed = set([self._getFilenameWithoutExtension(file) for file in originalFiles]).intersection(
+        set([self._getFilenameWithoutExtension(file) for file in alreadyStagedFiles]))
     fullpathsToNotYetProcessed = []
     for fullpath in originalFiles:
       for filename in notYetProcessed:
@@ -188,17 +188,17 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
   def _preprocess_workflow_with_splitting(self, filesAlreadyProcessed, filesToProcess, monoPath, chunkPath,
       adaptername):
-    filesSuccessfullyProcessed = self._convertMediaFilesToMonoAudio(filesToProcess, monoPath, adaptername)
+    filesSuccessfullyProcessed = self.convertMediaFilesToMonoAudio(filesToProcess, monoPath, adaptername)
     baseFilesToChunk = []
     baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
     # split mono audio to chunks
-    filesToChunk, filesAlreadyChunked = self._determineWavFilesToChunk(baseFilesToChunk,
-                                                                       chunkPath)
-    filesSuccessfullyChunked = self._splitAudioToChunks(filesToChunk, chunkPath)
+    filesToChunk, filesAlreadyChunked = self.determineWavFilesToChunk(baseFilesToChunk,
+                                                                      chunkPath)
+    filesSuccessfullyChunked = self.splitAudioToChunks(filesToChunk, chunkPath)
     # add chunks to media session
     mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
-    mediaAnnotationbundles = self._createMediaAnnotationBundles(mediaBundleFiles)
-    mediaSession = self._createMediaSession(mediaAnnotationbundles)
+    mediaAnnotationbundles = self.createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
 
 
@@ -244,7 +244,7 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
     self.logger.debug("Got {} original untranscribed mp4 files to process".format(len(originalFiles)))
 
-    return self._determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
 
 
 class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
@@ -267,7 +267,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
     self.logger.debug("Got {} original jugendsprache files to process".format(len(originalFiles)))
 
-    return self._determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
 
   def _validateStagingMonoPath(self):
     workdir = self.config['global']['workdir']
@@ -321,19 +321,19 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
     self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
 
-    return self._determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
 
   def toMetamodel(self):
     self.logger.debug("Archimob V2 Korpus")
     # convert chunks to mono audio
     filesToProcess, filesAlreadyProcessed = self._determineArchimobFilesToProcess()
-    filesSuccessfullyProcessed = self._convertMediaFilesToMonoAudio(filesToProcess, self._validateWorkdir(),
-                                                                    self.ADAPTERNAME)
+    filesSuccessfullyProcessed = self.convertMediaFilesToMonoAudio(filesToProcess, self._validateWorkdir(),
+                                                                   self.ADAPTERNAME)
     filesForMediaBundle = []
     filesForMediaBundle = filesForMediaBundle + filesSuccessfullyProcessed + filesAlreadyProcessed
     # add chunks to media session
-    mediaAnnotationbundles = self._createMediaAnnotationBundles(filesForMediaBundle)
-    mediaSession = self._createMediaSession(mediaAnnotationbundles)
+    mediaAnnotationbundles = self.createMediaAnnotationBundles(filesForMediaBundle)
+    mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
 
 
