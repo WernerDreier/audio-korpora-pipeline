@@ -40,9 +40,9 @@ class FileHandlingObject(LoggingObject):
     return os.path.basename(fullpath)
 
   def _getAllMediaFilesInBasepath(self, basepath, filetypes={".mp4", ".wav"}):
-    filelist = []
+    file_list = []
     for dirpath, dirnames, filenames in os.walk(basepath):
       for filename in [f for f in filenames if self._getFileExtension(f) in filetypes]:
-        filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetypes, basepath))
-    return filelist
+        file_list.append(os.path.join(dirpath, filename))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(file_list), filetypes, basepath))
+    return file_list

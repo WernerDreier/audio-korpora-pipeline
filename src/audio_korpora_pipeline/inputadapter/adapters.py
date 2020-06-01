@@ -167,23 +167,29 @@ class UntranscribedMediaSplittingAdapter(Adapter):
 
     return successfulFilenames
 
+  def _toFilenameDictionary(self, list):
+    if (list == None or len(list) == 0):
+      self.logger.debug("Got nothing in list, returning empty dictionary")
+      return dict()
+    listDict = dict()
+    for fullpath in list:
+      listDict[self._getFilenameWithoutExtension(fullpath)] = fullpath
+    self.logger.debug("Created dictionary of files of length {}".format(len(listDict)))
+    return listDict
+
   def determineFilesToConvertToMonoFromGivenLists(self, alreadyStagedFiles, originalFiles, adaptername):
-    notYetProcessed = set([self._getFilenameWithoutExtension(file) for file in originalFiles]).difference(
-        set([self._getFilenameWithoutExtension(file) for file in alreadyStagedFiles]))
-    alreadyProcessed = set([self._getFilenameWithoutExtension(file) for file in originalFiles]).intersection(
-        set([self._getFilenameWithoutExtension(file) for file in alreadyStagedFiles]))
-    fullpathsToNotYetProcessed = []
-    for fullpath in originalFiles:
-      for filename in notYetProcessed:
-        if filename in fullpath:
-          fullpathsToNotYetProcessed.append(fullpath)
-    fullpathsProcessed = []
-    for fullpath in alreadyStagedFiles:
-      for filename in alreadyProcessed:
-        if filename in fullpath:
-          fullpathsProcessed.append(fullpath)
-    self.logger.debug("Got {} files not yet processed for corpus {}".format(len(notYetProcessed), adaptername))
-    self.logger.debug("Got {} files already processed for corpus {}".format(len(alreadyProcessed), adaptername))
+    dictionaryOfOriginalFilepaths = self._toFilenameDictionary(originalFiles)
+    dictionaryOfStagedFilepaths = self._toFilenameDictionary(alreadyStagedFiles)
+
+    notYetProcessedKeys = set(dictionaryOfOriginalFilepaths.keys()).difference(set(dictionaryOfStagedFilepaths.keys()))
+    alreadyProcessedKeys = set(dictionaryOfOriginalFilepaths.keys()).intersection(
+        set(dictionaryOfStagedFilepaths.keys()))
+
+    fullpathsToNotYetProcessed = [dictionaryOfOriginalFilepaths[key] for key in notYetProcessedKeys]
+    fullpathsProcessed = [dictionaryOfStagedFilepaths[key] for key in alreadyProcessedKeys]
+
+    self.logger.debug("Got {} files not yet processed for corpus {}".format(len(notYetProcessedKeys), adaptername))
+    self.logger.debug("Got {} files already processed for corpus {}".format(len(alreadyProcessedKeys), adaptername))
     return fullpathsToNotYetProcessed, fullpathsProcessed
 
   def _preprocess_workflow_with_splitting(self, filesAlreadyProcessed, filesToProcess, monoPath, chunkPath,
