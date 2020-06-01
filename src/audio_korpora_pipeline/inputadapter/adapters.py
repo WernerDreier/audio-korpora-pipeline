@@ -121,26 +121,23 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     return successfullyChunkedFiles
 
   def determineWavFilesToChunk(self, baseFilesToChunk, stagingChunkPath):
-    allStageIndicatorFilesFullpath = set(
-        self._getAllMediaFilesInBasepath(stagingChunkPath, {".stagingComplete"}))
-    allExistingChunkedFilesFullpath = set(
-        self._getAllMediaFilesInBasepath(stagingChunkPath, {".wav"}))
-    allStageIndicatorFiles = [self._getFilenameWithoutExtension(file) for file in allStageIndicatorFilesFullpath]
-    allBaseFilesWithoutExtension = set([self._getFilenameWithoutExtension(file) for file in baseFilesToChunk])
-    stagingCompleteCorrect = allBaseFilesWithoutExtension.intersection(allStageIndicatorFiles)
-    stagingIncompleteCorrect = allBaseFilesWithoutExtension.difference(allStageIndicatorFiles)
+    allStageIndicatorFilesFullpath = set(self._getAllMediaFilesInBasepath(stagingChunkPath, {".stagingComplete"}))
+    allExistingChunkedFilesFullpath = set(self._getAllMediaFilesInBasepath(stagingChunkPath, {".wav"}))
+
+    allStageIndicatorFilesDictionary = self._toFilenameDictionary(allStageIndicatorFilesFullpath)
+    allBaseFilesDictionary = self._toFilenameDictionary(baseFilesToChunk)
+
+    stagingCompleteCorrectKeys = set(allBaseFilesDictionary.keys()).intersection(
+        set(allStageIndicatorFilesDictionary.keys()))
+    stagingIncompleteCorrectKeys = set(allBaseFilesDictionary.keys()).difference(
+        set(allStageIndicatorFilesDictionary.keys()))
 
     stagingComplete = []
     for fullpath in allExistingChunkedFilesFullpath:
-      for filename in stagingCompleteCorrect:
-        if filename in fullpath:
-          stagingComplete.append(fullpath)
+      if any(self._getFilenameWithoutExtension(fullpath).startswith(cm) for cm in stagingCompleteCorrectKeys):
+        stagingComplete.append(fullpath)
 
-    stagingIncomplete = []
-    for fullpath in baseFilesToChunk:
-      for filename in stagingIncompleteCorrect:
-        if filename in fullpath:
-          stagingIncomplete.append(fullpath)
+    stagingIncomplete = [allBaseFilesDictionary[key] for key in stagingIncompleteCorrectKeys]
 
     self.logger.debug("Got {} files not yet chunked".format(len(stagingIncomplete)))
     self.logger.debug("Got {} files chunked".format(len(stagingComplete)))
