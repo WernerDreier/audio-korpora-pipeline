@@ -509,3 +509,20 @@ class FairseqWav2VecAdapter(Adapter):
     filehandle.write("\nMedian duration in seconds {}".format(medianDurationInSeconds))
     filehandle.write("\nStandard deviation of duration in seconds {}".format(stdDurationInSeconds))
     pass
+
+  def cleanOutputFolder(self):
+    if (self.skipAlreadyProcessedFiles()):
+      self.logger.info(
+          "Cleaning of output folder is mostly ignored, as Parameter skipAlreadyProcessedFiles is set to true")
+      self.logger.info("Cleaning only train.tsv, valid.tsv and summary file")
+      filenamesToDelete = ["train.tsv", "valid.tsv", "summary.log", "train.tsv.unvalidated_backup",
+                           "valid.tsv.unvalidated_backup"]
+      fullpathToFiles = list(map(lambda filename: os.path.join(self._basePath(), filename), filenamesToDelete))
+      for file in fullpathToFiles:
+        if (os.path.exists(file)):
+          # we do not do any errorhandling as run should break if we start with invalid metadata that cant be deleted
+          os.remove(file)
+          self.logger.debug("Deleted old existing metadata file {}".format(file))
+      return
+    else:
+      Adapter.cleanOutputFolder(self)
