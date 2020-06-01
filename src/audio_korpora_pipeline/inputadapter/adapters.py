@@ -258,7 +258,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     self.logger.debug("CH-Jugendsprache Korpus")
     # convert audio to mono audio
     filesToProcess, filesAlreadyProcessed = self._determineChJugendspracheFilesToConvertToMono()
-    return self._preprocess_workflow_with_splitting(filesToProcess, filesAlreadyProcessed,
+    return self._preprocess_workflow_with_splitting(filesAlreadyProcessed, filesToProcess,
                                                     self._validateStagingMonoPath(), self._validateStagingChunksPath(),
                                                     self.ADAPTERNAME)
 
