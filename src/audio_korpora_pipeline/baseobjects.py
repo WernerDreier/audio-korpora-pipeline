@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 
 class LoggingObject(object):
@@ -20,3 +21,28 @@ class LoggingObject(object):
 
   def __hash__(self):
     return hash(self.__repr__())
+
+
+class FileHandlingObject(LoggingObject):
+  def __init__(self):
+    super(FileHandlingObject, self).__init__()
+
+  def _getFullFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(fullpath)[0]
+
+  def _getFileExtension(self, fullpath):
+    return os.path.splitext(fullpath)[1]
+
+  def _getFilenameWithoutExtension(self, fullpath):
+    return os.path.splitext(os.path.basename(fullpath))[0]
+
+  def _getFilenameWithExtension(self, fullpath):
+    return os.path.basename(fullpath)
+
+  def _getAllMediaFilesInBasepath(self, basepath, filetypes={".mp4", ".wav"}):
+    file_list = []
+    for dirpath, dirnames, filenames in os.walk(basepath):
+      for filename in [f for f in filenames if self._getFileExtension(f) in filetypes]:
+        file_list.append(os.path.join(dirpath, filename))
+    self.logger.debug("Found {} {} files within basepath {}".format(len(file_list), filetypes, basepath))
+    return file_list

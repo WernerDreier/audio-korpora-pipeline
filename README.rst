@@ -19,7 +19,7 @@ As the software-package is not yet available on pypi build the wheel yourself:
 
 Then install like any wheel::
 
-        pip install dist/audio_korpora_pipeline-0.8-py2.py3-none-any.whl
+        pip install dist/audio_korpora_pipeline-0.9-py2.py3-none-any.whl
 
 Getting Started
 ===============
@@ -47,4 +47,30 @@ Available Adapter are found within::
 Configuration
 =============
 
-change configuration according your needs within config.cfg
+change configuration according your needs within *config.cfg*
+
+
+Tips for usage
+==============
+Running without interruptions
+#############################
+| As runtime of the pipeline is expected to be several hours (even though multithreading is used where possible), start the pipeline with a command, that detaches from your current user session. e.g.
+| using:
+
+**nohup** *command* **&**::
+
+        nohup audio_korpora_pipeline -c ~/datasets/audio-korpora-pipeline-config.cfg --input_corpora='Archimob,UntranscribedVideo,ChJugendsprache' --output_corpora='FairseqWav2Vec' &
+
+Watching progress
+#################
+
+| For watching progress either tail the configured log file (configuerd within *config.cfg*) or see if the process is still running::
+
+Tail logs::
+
+        tail -n 50 -f ~/repositories/audio-korpora-pipeline/log.log
+
+Still running?::
+
+        htop
+

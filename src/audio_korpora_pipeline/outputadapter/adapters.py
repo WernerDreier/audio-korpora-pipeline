@@ -4,25 +4,38 @@ import os
 import random
 import shutil
 from concurrent.futures import as_completed
+from datetime import datetime
+from statistics import mean, stdev, median
 from time import gmtime, strftime
 
 import librosa
+import pandas
 import soundfile
 from quantulum3 import parser
 
-from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.baseobjects import FileHandlingObject
 from audio_korpora_pipeline.metamodel.mediasession import MediaSession
 from audio_korpora_pipeline.utils import winapi_path
 
 
-class Adapter(LoggingObject):
+class Adapter(FileHandlingObject):
   def __init__(self, config):
     super(Adapter, self).__init__()
 
   def fromMetamodel(self, mediaSession):
     raise NotImplementedError("Please use a subclass")
 
+  def skipAlreadyProcessedFiles(self):
+    skip = self.config['global']['skipAlreadyProcessedFiles']
+    if not (skip):
+      self.logger.warn("No config setting for skipAlreadyProcessedFiles set. Assuming True")
+      return True
+    return skip
+
   def cleanOutputFolder(self):
+    if (self.skipAlreadyProcessedFiles()):
+      self.logger.info("Cleaning of output folder is ignored, as Parameter skipAlreadyProcessedFiles is set to true")
+      return
     self.logger.debug("Cleaning workdirectory {}".format(self._basePath()))
     # making sure all are empty when we start the process:
     shutil.rmtree(self._basePath(), ignore_errors=True)
@@ -62,7 +75,7 @@ class Adapter(LoggingObject):
   def _getFilenameWithExtension(self, fullpath):
     return os.path.basename(fullpath)
 
-  def _actuallyWritingAudioToFilesystem(self, currentFolder, fullpathToFile, samplerate=16000):
+  def _actuallyWritingAudioToFilesystemThread(self, currentFolder, fullpathToFile, samplerate=16000):
     os.makedirs(currentFolder, exist_ok=True)
 
     try:
@@ -89,7 +102,8 @@ class Adapter(LoggingObject):
         writingAudioToFilesystemList.append((currentFolder, mediaAnnotationBundle.identifier))
 
       with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        futures = [executor.submit(self._actuallyWritingAudioToFilesystem, entry[0], entry[1], sampleRate) for entry in
+        futures = [executor.submit(self._actuallyWritingAudioToFilesystemThread, entry[0], entry[1], sampleRate) for
+                   entry in
                    writingAudioToFilesystemList]
       for future in as_completed(futures):
         if (future.result()[0] == False):
@@ -297,12 +311,12 @@ class FairseqWav2VecAdapter(Adapter):
       raise ValueError("MediaSession be of type MediaSession")
 
     self.logger.debug("FairseqWav2Vec Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
-    foldername = self._createFolderStructureAccordingToFairseqWav2Vec(mediaSession)
+    foldername = self._createFolderStructureAccordingToFairseqWav2Vec()
 
     self.logger.debug("Actual foldername is {}".format(foldername))
 
-    self._createMetadatafiles(mediaSession, foldername)
-    self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession, foldername)
+    successfulFiles, unsuccessfulFiles = self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession)
+    self._createMetadatafiles(mediaSession, foldername, unsuccessfulFiles)
     self._validateProcess(mediaSession)
 
     pass
@@ -313,7 +327,7 @@ class FairseqWav2VecAdapter(Adapter):
   def _valid_percent(self):
     return float(self.config['fairseq_wav2vec_output_adapter']['valid_percent'])
 
-  def _createFolderStructureAccordingToFairseqWav2Vec(self, mediaSession):
+  def _createFolderStructureAccordingToFairseqWav2Vec(self):
     """
 
     :return: there is only one output path, as we dont keep track of source on folder level
@@ -324,7 +338,9 @@ class FairseqWav2VecAdapter(Adapter):
     os.makedirs(self._wav_file_path(), exist_ok=True)
     return foldername
 
-  def _createMetadatafiles(self, mediaSession, foldername):
+  def _createMetadatafiles(self, mediaSession, foldername, unsuccessfulFiles=None):
+    if unsuccessfulFiles is None:
+      unsuccessfulFiles = {}
     self.logger.debug("Starting metadatafile-creation Fairseq Wav2Vec")
 
     # creating targetfiles
@@ -336,21 +352,50 @@ class FairseqWav2VecAdapter(Adapter):
     with open(filepathTrain, 'a', encoding="UTF-8", newline="\n") as train_f, open(filepathValid, 'a', encoding="UTF-8",
                                                                                    newline="\n") as valid_f:
       for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
-        currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
-        frames = soundfile.info(mediaAnnotationBundle.identifier).frames
-        dest = train_f if self.rand.random() > self._valid_percent() else valid_f
-        print('{}\t{}'.format(currentFilename, frames), file=dest)
-      self.logger.debug(
+        try:
+          if (mediaAnnotationBundle.identifier in unsuccessfulFiles):
+            self.logger.debug("Skipping file {} for metadata as it could not successfully be copied before".format(
+                mediaAnnotationBundle.identifier))
+            continue
+          currentFilename = self._getFilenameWithExtension(mediaAnnotationBundle.identifier)
+          frames = soundfile.info(mediaAnnotationBundle.identifier).frames
+          dest = train_f if self.rand.random() > self._valid_percent() else valid_f
+          print('{}\t{}'.format(currentFilename, frames), file=dest)
+          self.logger.debug("Wrote filename {} to train or valid metadatafile".format(currentFilename))
+        except Exception as excep:
+          self.logger.warn(
+              "Couldnt get metainformation for file {}. Skipping. This file will not be part of the training set".format(
+                  currentFilename), exc_info=excep)
+          continue
+      self.logger.info(
           "Wrote {} filenames to train and valid metadata files".format(len(mediaSession.mediaAnnotationBundles)))
-
+      self.logger.info(
+          "Skipped {} filenames due to previous errors".format(len(unsuccessfulFiles)))
     pass
 
-  def _resampleAndCopyAudioFilesFairseqWav2Vec(self, mediaSession, foldernames):
+  def _resampleAndCopyAudioFilesFairseqWav2Vec(self, mediaSession):
     self.logger.debug("Starting prepare and move audiofiles FairseqWav2Vec")
-    # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
-    for counter, mediaAnnotationBundle in enumerate(mediaSession.mediaAnnotationBundles):
-      self._actuallyWritingAudioToFilesystem(self._wav_file_path(), mediaAnnotationBundle.identifier)
-    pass
+    filesToProcess = [mediaAnnotationBundle.identifier for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles]
+    if (self.skipAlreadyProcessedFiles()):
+      allExistingWavs = self._getAllMediaFilesInBasepath(self._wav_file_path(), {".wav"})
+      filesToProcess = self._determineFilesToResampleAndCopy(filesToProcess, allExistingWavs)
+
+    successfulFilenames = []
+    unsuccessfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for counter, fileToProcess in enumerate(filesToProcess):
+        # we don't use _resampleAndCopyAudioFiles, instead we use more low-level function direct
+        futures.append(
+            executor.submit(self._actuallyWritingAudioToFilesystemThread, self._wav_file_path(), fileToProcess))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        unsuccessfulFilenames.append(future.result()[1])
+        self.logger.warning("Couldn't copy and resample file {}. This file will be skipped".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[1])
+        self.logger.debug("Copied and resampled file {}.".format(future.result()[1]))
+    return successfulFilenames, unsuccessfulFilenames
 
   def _validateProcess(self, mediaSession):
     """
@@ -359,6 +404,10 @@ class FairseqWav2VecAdapter(Adapter):
     :return:
     """
     self.logger.debug("Validate FairseqWav2Vec")
+    self._validate_all_files_named_within_metadata_files_exist()
+    self._writeSummary()
+    # make sure only files within metadatafiles are mentioned, that exist within wav-folders and vice-versa
+    # make sure no duration is less than 1 second (arbitrary size, just longer than zero, e.g. not corrupt)
     pass
 
   def _createHeaderOfMetadatfileIfNecessary(self, filepath):
@@ -370,3 +419,110 @@ class FairseqWav2VecAdapter(Adapter):
 
   def _wav_file_path(self):
     return os.path.join(self._basePath(), "wavs")
+
+  def _determineFilesToResampleAndCopy(self, filesPotentiallyToProcess=[], allExistingWavs=[]):
+    allExistingWavs = set(allExistingWavs)
+    allExistingWavsWithoutPath = set(map(lambda filename: self._getFilenameWithExtension(filename), allExistingWavs))
+    allPotentialWavsWithoutPath = set(
+        map(lambda filename: self._getFilenameWithExtension(filename), filesPotentiallyToProcess))
+
+    filenamesOnlyToResample = allPotentialWavsWithoutPath.difference(allExistingWavsWithoutPath)
+    fullpathsToResample = list(
+        filter(lambda filename: self._getFilenameWithExtension(filename) in filenamesOnlyToResample,
+               filesPotentiallyToProcess))
+    self.logger.debug(
+        "From initially {} potential files to resample {} remain to process as others are already existing and parameter skipAlreadyProcessedFiles is set to True".format(
+            len(filesPotentiallyToProcess), len(fullpathsToResample)))
+    return fullpathsToResample
+
+  def _validate_all_files_named_within_metadata_files_exist(self):
+    minimumFrameLengthForValidAudio = 16000  # 1sec. given that sample-rate is 16k
+    allExistingWavs = set(map(lambda filename: self._getFilenameWithExtension(filename),
+                              self._getAllMediaFilesInBasepath(self._wav_file_path(), {".wav"})))
+    self._validate_tsv_file(allExistingWavs, "train.tsv", minimumFrameLengthForValidAudio)
+    self._validate_tsv_file(allExistingWavs, "valid.tsv", minimumFrameLengthForValidAudio)
+    pass
+
+  def _validate_tsv_file(self, allExistingWavs, tsvFilename, minimumFrameLengthForValidAudio):
+    metadatafile = os.path.join(self._basePath(), tsvFilename)
+    with open(metadatafile) as f:
+      firstRowOfMetadata = f.readline()
+    allFilesMentionedInMetadata = pandas.read_csv(metadatafile, sep="\\t", skiprows=1,
+                                                  encoding="UTF-8", header=None)
+    allFilesMentionedInMetadata.columns = ["filename", "frames"]
+    filesNotBeingCopied = set(allFilesMentionedInMetadata.filename).difference(allExistingWavs)
+    filesBeingToShortInFrames = set(
+        allFilesMentionedInMetadata[allFilesMentionedInMetadata.frames < minimumFrameLengthForValidAudio].filename)
+    allFilesNotOk = filesNotBeingCopied.union(filesBeingToShortInFrames)
+    if (len(allFilesNotOk) > 0):
+      self.logger.warn(
+          "While validating file {} got {} files not being ok (out of {} files), which are therefore removed.\nA backup of the original file is created with suffix unvalidated_backup".format(
+              tsvFilename,
+              len(allFilesNotOk), len(allFilesMentionedInMetadata)))
+      shutil.copyfile(os.path.join(self._basePath(), tsvFilename),
+                      os.path.join(self._basePath(), tsvFilename + ".unvalidated_backup"))
+      for fileNotOk in allFilesNotOk:
+        if (fileNotOk in filesNotBeingCopied):
+          self.logger.debug("File {} is not correctly copied, ignoring".format(fileNotOk))
+        if (fileNotOk in filesBeingToShortInFrames):
+          self.logger.debug("File {} is to short, ignoring".format(fileNotOk))
+      allTrainFilesCleaned = allFilesMentionedInMetadata[~allFilesMentionedInMetadata.filename.isin(allFilesNotOk)]
+      os.remove(os.path.join(self._basePath(), tsvFilename))
+      allTrainFilesCleaned.to_csv(metadatafile, sep="\t", encoding="UTF-8", header=None, index=None,
+                                  line_terminator="\n")
+      with open(metadatafile, 'r') as original:
+        data = original.read()
+      with open(metadatafile, 'w', newline="\n") as modified:
+        modified.write(firstRowOfMetadata + data)
+    else:
+      self.logger.info("Validated {} FairseqWav2Vec Metadata successfully".format(tsvFilename))
+
+  def _writeSummary(self):
+    filename = os.path.join(self._basePath(), "summary.log")
+    with open(filename, 'w', newline="\n") as summaryFile:
+      summaryFile.write("Corpus processed on {}\n".format(datetime.now()))
+      self._writeStatistics(summaryFile, "train.tsv")
+      self._writeStatistics(summaryFile, "valid.tsv")
+    pass
+
+  def _statisticsOfMetadataFile(self, filename):
+    metadatafile = os.path.join(self._basePath(), filename)
+    framerate = 16000
+    files = pandas.read_csv(metadatafile, sep="\\t", skiprows=1, encoding="UTF-8", header=None)
+    files.columns = ["filename", "frames"]
+
+    totalDurationInSeconds = sum(files.frames / framerate)
+    meanDurationInSeconds = mean(files.frames / framerate)
+    medianDurationInSeconds = median(files.frames / framerate)
+    stdDurationInSeconds = stdev(files.frames / framerate)
+    countOfFiles = len(files)
+    return countOfFiles, totalDurationInSeconds, meanDurationInSeconds, medianDurationInSeconds, stdDurationInSeconds
+
+  def _writeStatistics(self, filehandle, filename):
+    countOfFiles, totalDurationInSeconds, meanDurationInSeconds, medianDurationInSeconds, stdDurationInSeconds = self._statisticsOfMetadataFile(
+        filename)
+    filehandle.write("\n\n\n--- Statistics for file {} ---\n".format(filename))
+    filehandle.write("\nCount of datafiles {}".format(countOfFiles))
+    filehandle.write("\nTotal duration in seconds {}".format(totalDurationInSeconds))
+    filehandle.write("\nTotal duration in hours {}".format(totalDurationInSeconds / 3600))
+    filehandle.write("\nMean duration in seconds {}".format(meanDurationInSeconds))
+    filehandle.write("\nMedian duration in seconds {}".format(medianDurationInSeconds))
+    filehandle.write("\nStandard deviation of duration in seconds {}".format(stdDurationInSeconds))
+    pass
+
+  def cleanOutputFolder(self):
+    if (self.skipAlreadyProcessedFiles()):
+      self.logger.info(
+          "Cleaning of output folder is mostly ignored, as Parameter skipAlreadyProcessedFiles is set to true")
+      self.logger.info("Cleaning only train.tsv, valid.tsv and summary file")
+      filenamesToDelete = ["train.tsv", "valid.tsv", "summary.log", "train.tsv.unvalidated_backup",
+                           "valid.tsv.unvalidated_backup"]
+      fullpathToFiles = list(map(lambda filename: os.path.join(self._basePath(), filename), filenamesToDelete))
+      for file in fullpathToFiles:
+        if (os.path.exists(file)):
+          # we do not do any errorhandling as run should break if we start with invalid metadata that cant be deleted
+          os.remove(file)
+          self.logger.debug("Deleted old existing metadata file {}".format(file))
+      return
+    else:
+      Adapter.cleanOutputFolder(self)

@@ -1,10 +1,14 @@
+import concurrent
 import os
+from concurrent.futures import as_completed
+from concurrent.futures._base import as_completed
+from pathlib import Path
 
 import ffmpeg
 import pandas as pd
 import webrtcvad
 
-from audio_korpora_pipeline.baseobjects import LoggingObject
+from audio_korpora_pipeline.baseobjects import FileHandlingObject
 from audio_korpora_pipeline.inputadapter.audiosplit.splitter import Splitter
 from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle, \
   MediaAnnotationBundleWithoutTranscription, WrittenResource, MediaFile, \
@@ -12,21 +16,19 @@ from audio_korpora_pipeline.metamodel.mediasession import MediaAnnotationBundle,
   MediaSessionActors, MediaSession
 
 
-class Adapter(LoggingObject):
+class Adapter(FileHandlingObject):
   def __init__(self, config):
     super(Adapter, self).__init__()
 
   def toMetamodel(self) -> MediaSession:
     raise NotImplementedError("Please use a subclass")
 
-  def _getFullFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(fullpath)[0]
-
-  def _getFilenameWithoutExtension(self, fullpath):
-    return os.path.splitext(os.path.basename(fullpath))[0]
-
-  def _getFilenameWithExtension(self, fullpath):
-    return os.path.basename(fullpath)
+  def skipAlreadyProcessedFiles(self):
+    skip = self.config['global']['skipAlreadyProcessedFiles']
+    if not (skip):
+      self.logger.warn("No config setting for skipAlreadyProcessedFiles set. Assuming True")
+      return True
+    return skip
 
 
 class UntranscribedMediaSplittingAdapter(Adapter):
@@ -40,75 +42,167 @@ class UntranscribedMediaSplittingAdapter(Adapter):
     self.config = config
     self.mediaSessionActors.add(MediaSessionActor("UNKNOWN", Sex.UNKNOWN, None))
 
-  def _getAllMediaFilesInBasepath(self, basepath, filetype=".mp4"):
-    filelist = []
-    for dirpath, dirnames, filenames in os.walk(basepath):
-      for filename in [f for f in filenames if f.endswith(filetype)]:
-        filelist.append(os.path.join(dirpath, filename))
-    self.logger.debug("Found {} {} files within basepath {}".format(len(filelist), filetype, basepath))
-    return filelist
-
-  def _splitMonoRawAudioToVoiceSections(self, wavFilenames):
-    if ((wavFilenames == None) or (len(wavFilenames) == 0)):
-      self.logger.info("Nothing to split, received empty wav-filenamelist")
-      return
-
-    audiochunkPaths = []
+  def _splitMonoRawAudioToVoiceSectionsThread(self, file, outputpath):
+    self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
     splitter = Splitter()
     vad = webrtcvad.Vad(int(self.AUDIO_SPLIT_AGRESSIVENESS))
-    for filenumber, file in enumerate(wavFilenames):
-      self.logger.debug("Splitting file into chunks: {}".format(self._getFilenameWithExtension(file)))
-      basename = self._getFullFilenameWithoutExtension(file)
+    basename = self._getFilenameWithoutExtension(file)
+    audiochunkPathsForThisfile = []
+    try:
       audio, sample_rate = splitter.read_wave(file)
       frames = splitter.frame_generator(30, audio, sample_rate)
       frames = list(frames)
       segments = splitter.vad_collector(sample_rate, 30, 300, vad, frames)
       for i, segment in enumerate(segments):
-        path = basename + '_chunk_{:05d}.wav'.format(i)
+        path = os.path.join(outputpath, basename + '_chunk_{:05d}.wav'.format(i))
         self.logger.debug("Write chunk {} of file {}".format(i, file))
         splitter.write_wave(path, segment, sample_rate)
-        audiochunkPaths.append(path)
+        audiochunkPathsForThisfile.append(path)
+      # write staging complete file
+      stagingPath = os.path.join(outputpath, basename + ".stagingComplete")
+      with open(stagingPath, 'a'):
+        os.utime(stagingPath, None)
+      self.logger.debug("Finished splitting file {}".format(file))
+    except Exception as excep:
+      self.logger.warn("Could split file into chunks {}. Skipping".format(file), exc_info=excep)
+      return (False, str(file), [])  # returning an empty list, as no success here
+    return (True, str(file), audiochunkPathsForThisfile)
 
-      self.logger.debug("Finished splitting file. delete now source wav-file: {}".format(file))
-      os.remove(file)
-    self.logger.debug("Finished splitting {} wav files".format(len(wavFilenames)))
-    return audiochunkPaths
+  def _convertMediafileToMonoAudioThread(self, filenumber, totalNumberOfFiles, singleFilepathToProcess, outputPath):
+    self.logger.debug(
+        "Processing file {}/{} on path {}".format(filenumber + 1, totalNumberOfFiles, singleFilepathToProcess))
+    nextFilename = os.path.join(outputPath, self._getFilenameWithoutExtension(singleFilepathToProcess) + ".wav")
+    try:
+      (ffmpeg
+       .input(singleFilepathToProcess)
+       .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
+       .overwrite_output()
+       .run()
+       )
+    except ffmpeg.Error as ffmpgError:
+      self.logger.warn("Ffmpeg rose an error", exc_info=ffmpgError)
+      self.logger.warn("Due to error of ffmpeg skipped file {}".format(singleFilepathToProcess))
+      return (False, str(singleFilepathToProcess), str(nextFilename))
+    except Exception as e:
+      self.logger.warn("Got an error while using ffmpeg for file {}".format(singleFilepathToProcess), exc_info=e)
+      return (False, str(singleFilepathToProcess), str(nextFilename))
+    return (True, str(singleFilepathToProcess), str(nextFilename))
 
-  def _convertMediafileToMonoAudio(self, basepath, filetype):
-    self.logger.debug("Extracting audio wav from {} from path {}".format(filetype, basepath))
-    filesToProcess = self._getAllMediaFilesInBasepath(basepath, filetype)
-
-    wavFilenames = []
-    for filenumber, file in enumerate(filesToProcess):
-      self.logger.debug("Processing file {}/{} on path {}".format(filenumber + 1, len(filesToProcess), file))
-      nextFilename = self._getFullFilenameWithoutExtension(file) + ".mono.wav"
-
-      try:
-        stdout, err = (
-          ffmpeg
-            .input(file)
-            .output(nextFilename, format='wav', acodec='pcm_s16le', ac=1, ar='16k')
-            .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
-        )
-      except ffmpeg.Error as ffmpgError:
-        self.logger.warn("Ffmpeg rose an error: {}", ffmpgError)
-        self.logger.warn("Due to error of ffmpeg skipped file {}", file)
-        continue
-      wavFilenames.append(nextFilename)
-    return wavFilenames
-
-  def _createMediaSession(self, bundles):
+  def createMediaSession(self, bundles):
     session = MediaSession(self.ADAPTERNAME, self.mediaSessionActors, bundles)
     return session
 
-  def _createMediaAnnotationBundles(self, audiochunks):
+  def createMediaAnnotationBundles(self, audiochunks):
     annotationBundles = []
     for index, filepath in enumerate(audiochunks):
       bundle = MediaAnnotationBundleWithoutTranscription(identifier=filepath)  # we do not have any written ressources
       bundle.setMediaFile(filepath)
       annotationBundles.append(bundle)
     return annotationBundles
+
+  def splitAudioToChunks(self, filesToChunk, outputPath):
+    if ((filesToChunk == None) or (len(filesToChunk) == 0)):
+      self.logger.info("Nothing to split, received empty wav-filenamelist")
+      return []
+
+    successfullyChunkedFiles = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(filesToChunk):
+        futures.append(
+            executor.submit(self._splitMonoRawAudioToVoiceSectionsThread, file, outputPath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt split audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfullyChunkedFiles.extend(future.result()[2])
+      self.logger.debug("Splitting Audio is done {}".format(future.result()))
+    self.logger.debug("Finished splitting {} wav files".format(len(filesToChunk)))
+    return successfullyChunkedFiles
+
+  def determineWavFilesToChunk(self, baseFilesToChunk, stagingChunkPath):
+    allStageIndicatorFilesFullpath = set(self._getAllMediaFilesInBasepath(stagingChunkPath, {".stagingComplete"}))
+    allExistingChunkedFilesFullpath = set(self._getAllMediaFilesInBasepath(stagingChunkPath, {".wav"}))
+
+    allStageIndicatorFilesDictionary = self._toFilenameDictionary(allStageIndicatorFilesFullpath)
+    allBaseFilesDictionary = self._toFilenameDictionary(baseFilesToChunk)
+
+    stagingCompleteCorrectKeys = set(allBaseFilesDictionary.keys()).intersection(
+        set(allStageIndicatorFilesDictionary.keys()))
+    stagingIncompleteCorrectKeys = set(allBaseFilesDictionary.keys()).difference(
+        set(allStageIndicatorFilesDictionary.keys()))
+
+    stagingComplete = []
+    for fullpath in allExistingChunkedFilesFullpath:
+      if any(self._getFilenameWithoutExtension(fullpath).startswith(cm) for cm in stagingCompleteCorrectKeys):
+        stagingComplete.append(fullpath)
+
+    stagingIncomplete = [allBaseFilesDictionary[key] for key in stagingIncompleteCorrectKeys]
+
+    self.logger.debug("Got {} files not yet chunked".format(len(stagingIncomplete)))
+    self.logger.debug("Got {} files chunked".format(len(stagingComplete)))
+    return stagingIncomplete, stagingComplete
+
+  def convertMediaFilesToMonoAudio(self, filesToProcess, outputpath, adapterName):
+    if (filesToProcess == None or len(filesToProcess) == 0):
+      self.logger.debug("No files to convert for {}, skipping".format(adapterName))
+      return []
+
+    successfulFilenames = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, currentFile in enumerate(filesToProcess):
+        futures.append(
+            executor.submit(self._convertMediafileToMonoAudioThread, filenumber, len(filesToProcess),
+                            currentFile, outputpath))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt process audiofile {}, removing from list".format(future.result()[1]))
+      else:
+        successfulFilenames.append(future.result()[2])
+      self.logger.debug("Processing Audio is done {} for Converter {}".format(future.result(), adapterName))
+
+    return successfulFilenames
+
+  def _toFilenameDictionary(self, list):
+    if (list == None or len(list) == 0):
+      self.logger.debug("Got nothing in list, returning empty dictionary")
+      return dict()
+    listDict = dict()
+    for fullpath in list:
+      listDict[self._getFilenameWithoutExtension(fullpath)] = fullpath
+    self.logger.debug("Created dictionary of files of length {}".format(len(listDict)))
+    return listDict
+
+  def determineFilesToConvertToMonoFromGivenLists(self, alreadyStagedFiles, originalFiles, adaptername):
+    dictionaryOfOriginalFilepaths = self._toFilenameDictionary(originalFiles)
+    dictionaryOfStagedFilepaths = self._toFilenameDictionary(alreadyStagedFiles)
+
+    notYetProcessedKeys = set(dictionaryOfOriginalFilepaths.keys()).difference(set(dictionaryOfStagedFilepaths.keys()))
+    alreadyProcessedKeys = set(dictionaryOfOriginalFilepaths.keys()).intersection(
+        set(dictionaryOfStagedFilepaths.keys()))
+
+    fullpathsToNotYetProcessed = [dictionaryOfOriginalFilepaths[key] for key in notYetProcessedKeys]
+    fullpathsProcessed = [dictionaryOfStagedFilepaths[key] for key in alreadyProcessedKeys]
+
+    self.logger.debug("Got {} files not yet processed for corpus {}".format(len(notYetProcessedKeys), adaptername))
+    self.logger.debug("Got {} files already processed for corpus {}".format(len(alreadyProcessedKeys), adaptername))
+    return fullpathsToNotYetProcessed, fullpathsProcessed
+
+  def _preprocess_workflow_with_splitting(self, filesAlreadyProcessed, filesToProcess, monoPath, chunkPath,
+      adaptername):
+    filesSuccessfullyProcessed = self.convertMediaFilesToMonoAudio(filesToProcess, monoPath, adaptername)
+    baseFilesToChunk = []
+    baseFilesToChunk = baseFilesToChunk + filesSuccessfullyProcessed + filesAlreadyProcessed
+    # split mono audio to chunks
+    filesToChunk, filesAlreadyChunked = self.determineWavFilesToChunk(baseFilesToChunk,
+                                                                      chunkPath)
+    filesSuccessfullyChunked = self.splitAudioToChunks(filesToChunk, chunkPath)
+    # add chunks to media session
+    mediaBundleFiles = [] + filesSuccessfullyChunked + filesAlreadyChunked
+    mediaAnnotationbundles = self.createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self.createMediaSession(mediaAnnotationbundles)
+    return mediaSession
 
 
 class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
@@ -118,18 +212,42 @@ class UntranscribedVideoAdapter(UntranscribedMediaSplittingAdapter):
     super(UntranscribedVideoAdapter, self).__init__(config=config)
     self.config = config
 
+  def toMetamodel(self):
+    self.logger.debug("Untranscribed Video Korpus")
+    # convert video to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineVideoFilesToConvertToMono()
+    return self._preprocess_workflow_with_splitting(filesAlreadyProcessed, filesToProcess,
+                                                    self._validateStagingMonoPath(), self._validateStagingChunksPath(),
+                                                    self.ADAPTERNAME)
+
   def _validateKorpusPath(self):
     korpus_path = self.config['untranscribed_videos_input_adapter']['korpus_path']
     if not os.path.isdir(korpus_path):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
-  def toMetamodel(self):
-    self.logger.debug("Untranscribed Video Korpus")
-    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".mp4")
-    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
-    annotationBundles = self._createMediaAnnotationBundles(audiochunks)
-    return self._createMediaSession(annotationBundles)
+  def _validateStagingMonoPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("untranscribed_video_staging_mono")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _validateStagingChunksPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("untranscribed_video_staging_chunks")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _determineVideoFilesToConvertToMono(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".mp4"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
+    self.logger.debug("Got {} original untranscribed mp4 files to process".format(len(originalFiles)))
+
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
 
 
 class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
@@ -139,18 +257,42 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     super(ChJugendspracheAdapter, self).__init__(config=config)
     self.config = config
 
+  def toMetamodel(self):
+    self.logger.debug("CH-Jugendsprache Korpus")
+    # convert audio to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineChJugendspracheFilesToConvertToMono()
+    return self._preprocess_workflow_with_splitting(filesAlreadyProcessed, filesToProcess,
+                                                    self._validateStagingMonoPath(), self._validateStagingChunksPath(),
+                                                    self.ADAPTERNAME)
+
+  def _determineChJugendspracheFilesToConvertToMono(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".WAV", ".wav"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
+    self.logger.debug("Got {} original jugendsprache files to process".format(len(originalFiles)))
+
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+
+  def _validateStagingMonoPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("ch_jugensprache_staging_mono")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _validateStagingChunksPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("ch_jugensprache_staging_chunks")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
   def _validateKorpusPath(self):
     korpus_path = self.config['ch_jugendsprache_input_adapter']['korpus_path']
     if not os.path.isdir(korpus_path):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
-
-  def toMetamodel(self):
-    self.logger.debug("CH-Jugendsprache Korpus")
-    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".WAV")
-    audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
-    annotationBundles = self._createMediaAnnotationBundles(audiochunks)
-    return self._createMediaSession(annotationBundles)
 
 
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
@@ -169,13 +311,33 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
+  def _validateWorkdir(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("archimob_staging")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _determineArchimobFilesToProcess(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
+    self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
+
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+
   def toMetamodel(self):
     self.logger.debug("Archimob V2 Korpus")
-    wavFilenames = self._convertMediafileToMonoAudio(self._validateKorpusPath(), ".wav")
-    # we do not split into chunks, as we want to go with the original file splits
-    # audiochunks = self._splitMonoRawAudioToVoiceSections(wavFilenames)
-    annotationBundles = self._createMediaAnnotationBundles(wavFilenames)
-    return self._createMediaSession(annotationBundles)
+    # convert chunks to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineArchimobFilesToProcess()
+    filesSuccessfullyProcessed = self.convertMediaFilesToMonoAudio(filesToProcess, self._validateWorkdir(),
+                                                                   self.ADAPTERNAME)
+    filesForMediaBundle = []
+    filesForMediaBundle = filesForMediaBundle + filesSuccessfullyProcessed + filesAlreadyProcessed
+    # add chunks to media session
+    mediaAnnotationbundles = self.createMediaAnnotationBundles(filesForMediaBundle)
+    mediaSession = self.createMediaSession(mediaAnnotationbundles)
+    return mediaSession
 
 
 class CommonVoiceAdapter(Adapter):
