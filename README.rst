@@ -19,7 +19,7 @@ As the software-package is not yet available on pypi build the wheel yourself:
 
 Then install like any wheel::
 
-        pip install dist/audio_korpora_pipeline-0.8-py2.py3-none-any.whl
+        pip install dist/audio_korpora_pipeline-0.9-py2.py3-none-any.whl
 
 Getting Started
 ===============
