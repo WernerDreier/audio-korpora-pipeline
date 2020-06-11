@@ -1,5 +1,7 @@
 import concurrent
 import os
+import re
+import shutil
 from concurrent.futures import as_completed
 from concurrent.futures._base import as_completed
 from pathlib import Path
@@ -341,11 +343,12 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     return mediaSession
 
   def _fixOriginalDatasetFlawsIfNecessary(self, originalFiles):
+    # As of Archimobe release V2 there are some minor flaws in the data, which are treated sequentially
     if (self._fixForDuplicateWavsNecessary(originalFiles)):
       originalFiles = self._fixForDuplicateWavs1063(originalFiles)
 
-    if (self._fixForWrongFilenamesNecessary()):
-      originalFiles = self._fixForWrongFilenames1082()
+    if (self._fixForWrongFilenamesNecessary(originalFiles)):
+      originalFiles = self._fixForWrongFilenames1082(originalFiles)
 
     return originalFiles
 
@@ -364,6 +367,35 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
         filter(lambda file: not (os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file), originalFiles))
     originalFiles = pathsWithout1063duplicates
     return originalFiles
+
+  def _fixForWrongFilenamesNecessary(self, originalFiles):
+    regexForFindingWrongNames = "(^\d{4}_\d)(d\d{4}_.*\.wav)"  # like 1082_2d1082_2_TLI_3.wav
+    onlyFilenames = [os.path.basename(filename) for filename in originalFiles]
+    for filename in onlyFilenames:
+      m = re.search(regexForFindingWrongNames, filename)
+      if (not (m is None)):
+        return True
+    return False
+
+  def _fixForWrongFilenames1082(self, originalFiles):
+    fixedFiles = originalFiles.copy()
+    regexForFindingWrongFullpaths = "(.*\\" + os.path.sep + ")(\d{4}_\d)(d\d{4}_.*\.wav)"  # like /home/somebody/files/1082/1082_2d1082_2_TLI_3.wav
+    for filename in originalFiles:
+      m = re.search(regexForFindingWrongFullpaths, filename)
+      if (not (m is None)):
+        newFilename = m.group(1) + m.group(3)
+        self.logger.debug(
+            "Fix 1082: Renaming file {} from {} to {}".format(m.group(2) + m.group(3), filename, newFilename))
+        try:
+          shutil.move(filename, newFilename)
+          fixedFiles.add(newFilename)
+        except Exception as inst:
+          self.logger.warn(
+              "Could not move file {} to {}, skipping and just removing from usable filenames".format(filename,
+                                                                                                      newFilename),
+              exc_info=inst)
+        fixedFiles.remove(filename)
+    return fixedFiles
 
 
 class CommonVoiceAdapter(Adapter):

@@ -77,9 +77,27 @@ class TestArchimobAdapter:
                            filelist))), "We start with some wrong folders in place"
 
     # when
-    newFilelist = adapter._fixForDuplicateWavs1063(
-        filelist), "Should return true, as we expect to have those files within"
+    newFilelist = adapter._fixForDuplicateWavs1063(filelist)
 
     assert (len(newFilelist) < len(filelist)), "It should have filtered something"
     assert adapter._fixForDuplicateWavsNecessary(
-      newFilelist) == False, "The new list should not contain any fixable wavs anymore"
+        newFilelist) == False, "The new list should not contain any fixable wavs anymore"
+
+  def test_fixing_1083flaw(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+
+    # assuming this will have all original transcripts ready for testing
+    filelist = set(adapter._getAllMediaFilesInBasepath(adapter._validateKorpusPath(), {".wav"}))
+    assert any(list(filter(lambda file: "1082_2d1082_2_TLI_3.wav" in file,
+                           filelist))), "We start with some wrong folders in place"
+
+    # when
+    newFilelist = adapter._fixForWrongFilenames1082(filelist)
+
+    assert (len(newFilelist) == len(filelist)), "It should have same length entries"
+    assert (newFilelist != filelist), "It should have changed something"
+    assert adapter._fixForWrongFilenamesNecessary(
+        newFilelist) == False, "The new list should not contain any fixable wavs anymore"
