@@ -321,6 +321,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
 
   def _determineArchimobFilesToProcess(self):
     originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"}))
+    originalFiles = self._fixOriginalDatasetFlawsIfNecessary(originalFiles)
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
     self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
 
@@ -338,6 +339,31 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     mediaAnnotationbundles = self.createMediaAnnotationBundles(filesForMediaBundle)
     mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
+
+  def _fixOriginalDatasetFlawsIfNecessary(self, originalFiles):
+    if (self._fixForDuplicateWavsNecessary(originalFiles)):
+      originalFiles = self._fixForDuplicateWavs1063(originalFiles)
+
+    if (self._fixForWrongFilenamesNecessary()):
+      originalFiles = self._fixForWrongFilenames1082()
+
+    return originalFiles
+
+  def _fixForDuplicateWavsNecessary(self, originalFiles):
+    # This flaw is simply, that within 1063 there exists another folder 1063 containing all files again
+    existingPathsForDoubled1063 = list(
+        filter(lambda file: os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file, originalFiles))
+    fixNecessary = len(existingPathsForDoubled1063) > 0
+    self.logger.info("Found {} files of speaker 1063 which are duplicates. They will be ignored".format(
+        len(existingPathsForDoubled1063)))
+    return fixNecessary
+
+  def _fixForDuplicateWavs1063(self, originalFiles):
+    # fix is simply by removing the files in question from list
+    pathsWithout1063duplicates = list(
+        filter(lambda file: not (os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file), originalFiles))
+    originalFiles = pathsWithout1063duplicates
+    return originalFiles
 
 
 class CommonVoiceAdapter(Adapter):

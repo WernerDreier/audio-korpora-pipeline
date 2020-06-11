@@ -46,3 +46,40 @@ class TestUntranscribedVideoAdapter:
     assert len(metamodel.mediaSessionActors) == 1, "Muss genau einen Speaker (Unknown) enthalten"
     assert metamodel.mediaSessionActors.pop().id == "UNKNOWN", "Muss genau einen Speaker (Unknown) enthalten"
     assert len(metamodel.mediaAnnotationBundles) > 2, "Muss mehr als ein Media bundle enthalten"
+
+
+class TestArchimobAdapter:
+
+  def test_indicating_1063error(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+
+    # assuming this will have all original transcripts ready for testing
+    filelist = set(adapter._getAllMediaFilesInBasepath(adapter._validateKorpusPath(), {".wav"}))
+    assert any(list(filter(lambda file: os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file,
+                           filelist))), "We start with some wrong folders in place"
+
+    # when
+    assert adapter._fixForDuplicateWavsNecessary(
+        filelist), "Should return true, as we expect to have those files within"
+
+  def test_filtering_1063flaw(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+
+    # assuming this will have all original transcripts ready for testing
+    filelist = set(adapter._getAllMediaFilesInBasepath(adapter._validateKorpusPath(), {".wav"}))
+    assert any(list(filter(lambda file: os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file,
+                           filelist))), "We start with some wrong folders in place"
+
+    # when
+    newFilelist = adapter._fixForDuplicateWavs1063(
+        filelist), "Should return true, as we expect to have those files within"
+
+    assert (len(newFilelist) < len(filelist)), "It should have filtered something"
+    assert adapter._fixForDuplicateWavsNecessary(
+      newFilelist) == False, "The new list should not contain any fixable wavs anymore"
