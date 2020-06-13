@@ -416,7 +416,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
             "Fix 1082: Renaming file {} from {} to {}".format(m.group(2) + m.group(3), filename, newFilename))
         try:
           shutil.move(filename, newFilename)
-          fixedFiles.add(newFilename)
+          fixedFiles.append(newFilename)
         except Exception as inst:
           self.logger.warn(
               "Could not move file {} to {}, skipping and just removing from usable filenames".format(filename,
@@ -645,8 +645,8 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
           {'Filename': lastFilename, 'transcript': newTranscript}, ignore_index=True)
       self.logger.info(
           "Found a case {} where two sentences '{}' and '{}'  are within one audio-file, merging them together".format(
-            lastFilename,
-            transcriptionBefore, lastTranscription))
+              lastFilename,
+              transcriptionBefore, lastTranscription))
     return transcriptionForSpeaker
 
 
