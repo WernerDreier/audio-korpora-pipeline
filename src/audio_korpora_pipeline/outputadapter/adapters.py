@@ -399,7 +399,6 @@ class FairseqWav2VecAdapter(Adapter):
 
   def _validateProcess(self, mediaSession):
     """
-    FIXME should be implemented
     :param mediaSession:
     :return:
     """
@@ -526,3 +525,84 @@ class FairseqWav2VecAdapter(Adapter):
       return
     else:
       Adapter.cleanOutputFolder(self)
+
+
+class OpenSeq2SeqAdapter(FairseqWav2VecAdapter):
+
+  def __init__(self, config):
+    super(OpenSeq2SeqAdapter, self).__init__(config=config)
+    self.config = config
+
+  def fromMetamodel(self, mediaSession):
+    if not isinstance(mediaSession, MediaSession):
+      raise ValueError("MediaSession be of type MediaSession")
+
+    self.logger.debug("OpenSeq2Seq Starting actual work at {}".format(strftime("%Y-%m-%d %H:%M:%S", gmtime())))
+    foldername = self._createFolderStructureAccordingToOpenSeq2Seq()
+
+    self.logger.debug("Actual foldername is {}".format(foldername))
+
+    successfulFiles, unsuccessfulFiles = self._resampleAndCopyAudioFilesFairseqWav2Vec(mediaSession)
+    self._createMetadatafiles(mediaSession, foldername, unsuccessfulFiles)
+    self._validateProcess(mediaSession)
+
+    pass
+
+  def _createFolderStructureAccordingToOpenSeq2Seq(self):
+    foldername = self._basePath()
+    foldername = winapi_path(foldername)
+    self.logger.debug("Foldername for OpenSeq2Seq is {}".format(foldername))
+    os.makedirs(self._wav_file_path(), exist_ok=True)
+    return foldername
+
+  def _basePath(self):
+    return self.config['openseq2seq_output_adapter']['output_path']
+
+  def _wav_file_path(self):
+    return os.path.join(self._basePath(), "wav_files")
+
+  def _createMetadatafiles(self, mediaSession, foldername, unsuccessfulFiles=None):
+    if unsuccessfulFiles is None:
+      unsuccessfulFiles = {}
+    self.logger.debug("Starting metadatafile-creation Openseq2seq")
+
+    # creating targetfiles
+    filepathTrain = os.path.join(foldername, "metadata.csv")
+    self._createHeaderOfMetadatfileIfNecessary(filepathTrain)
+
+    with open(filepathTrain, 'a', encoding="UTF-8", newline="\n") as train_f:
+      for mediaAnnotationBundle in mediaSession.mediaAnnotationBundles:
+        try:
+          if (mediaAnnotationBundle.identifier in unsuccessfulFiles):
+            self.logger.debug("Skipping file {} for metadata as it could not successfully be copied before".format(
+                mediaAnnotationBundle.identifier))
+            continue
+          fullpathFilename = mediaAnnotationBundle.identifier
+          shortFilename = self._getFilenameWithExtension(fullpathFilename)
+          dest = train_f
+          filesize = os.path.getsize(fullpathFilename)
+          print('{},{},{}'.format(fullpathFilename, filesize, mediaAnnotationBundle.writtenResource.name), file=dest)
+          self.logger.debug("Wrote transcription for {} to metadatafile".format(shortFilename))
+        except Exception as excep:
+          self.logger.warn(
+              "Couldnt get metainformation for file {}. Skipping. This file will not be part of the training set".format(
+                  fullpathFilename), exc_info=excep)
+          continue
+      self.logger.info(
+          "Wrote {} filenames to metadata file".format(len(mediaSession.mediaAnnotationBundles)))
+      self.logger.info(
+          "Skipped {} filenames due to previous errors".format(len(unsuccessfulFiles)))
+    pass
+
+  def _createHeaderOfMetadatfileIfNecessary(self, filepath):
+    if not (os.path.isfile(filepath)):
+      with open(filepath, 'a', encoding="UTF-8", newline="\n") as fd:
+        header = "wav_filename,wav_filesize,transcript\n"
+        fd.write(header)
+        self.logger.debug("Wrote {} as openseq2seq header".format(header))
+    pass
+
+  def _validateProcess(self, mediaSession):
+    self.logger.debug("Validate OpenSeq2Seq")
+    # FIXME: Validating
+    pass

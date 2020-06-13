@@ -9,7 +9,8 @@ import sys
 from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
 from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter, \
   ChJugendspracheAdapter, ArchimobAdapter
-from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter, FairseqWav2VecAdapter
+from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter, FairseqWav2VecAdapter, \
+  OpenSeq2SeqAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
 
 
@@ -50,6 +51,8 @@ def _createOutputAdapters(config, outputs):
       adapters.append(LjSpeechAdapter(config))
     if (ExistingOutputAdapter.FAIRSEQ_WAV2VEC.value == output):
       adapters.append(FairseqWav2VecAdapter(config))
+    if (ExistingOutputAdapter.OPENSEQ2SEQ.value == output):
+      adapters.append(OpenSeq2SeqAdapter(config))
   return adapters
 
 

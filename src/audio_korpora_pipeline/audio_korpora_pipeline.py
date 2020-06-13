@@ -14,3 +14,4 @@ class ExistingOutputAdapter(Enum):
   MAILABS = "M-AILABS"
   LJ_SPEECH = "LJSpeech"
   FAIRSEQ_WAV2VEC = "FairseqWav2Vec"
+  OPENSEQ2SEQ = "OpenSeq2Seq"
