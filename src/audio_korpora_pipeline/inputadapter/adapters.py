@@ -300,7 +300,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
 
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
   """
-  ArchimobAdapter currently only converts audio to mono. Metadata-Conversion will be implemented in a later release
+  ArchimobAdapter
   """
   ADAPTERNAME = "Archimob"
 
