@@ -454,7 +454,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       root = tree.getroot()
       de_data = pd.DataFrame(columns=['Filename', 'transcript'])
       transcriptionForSpeaker = pd.DataFrame(columns=de_data.columns)
-      tagsToIgnore = {"gap", "incident", "kinesic", "other"}
+      tagsToIgnore = set([namespaceprefix + tag for tag in {"gap", "incident", "kinesic", "other"}])
 
       for utteranceTag in root.iter(namespaceprefix + 'u'):
         media = utteranceTag.attrib['start']
@@ -474,8 +474,9 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
           if (namespaceprefix + "unclear" == element.tag):
             extractedWord = self._extractUnclearTag(namespaceprefix, element)
           if (element.tag in tagsToIgnore):
-            self.logger.debug("Found tag {} which is in ignore list, ignoring this node".format(element.tag))
-            continue
+            self.logger.debug(
+                "Found tag {} which is in ignore list, ignoring the whole utterance {}".format(element.tag, filename))
+            break
 
           if (extractedWord):
             cleanedWord = self._cleanExtractedWord(extractedWord)

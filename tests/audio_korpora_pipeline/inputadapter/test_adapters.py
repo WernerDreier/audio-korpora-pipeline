@@ -112,6 +112,7 @@ class TestArchimobAdapter:
     expectedOutputSentenceContainingPauseAndVocal = "#ehm s ich bin am sächsezwänzgischte jänner nünzehundertzwölf @ gibore"
     expectedOutputSentenceContainingUnclear = "maitschi und de"
     expectedOutputSentenceContainingDeletion = "de he det hend"
+    expectedOutputSentenceContainingGap = "d1007-T62"
 
     # when
     transcriptionForThisSpeaker = adapter._extractSingleXmlFileThread(fileToConvert)
@@ -123,9 +124,15 @@ class TestArchimobAdapter:
     assert transcriptionForThisSpeaker[1] == fileToConvert, "Filename should be the same as inputted"
     assert "chönd sii" == (transcriptionForThisSpeaker[2]).loc[
       0, "transcript"], "Some example for correct transcription"
-    assert expectedOutputSentenceContainingPauseAndVocal == (transcriptionForThisSpeaker[2]).loc[
-      5, "transcript"], "Output sentence does not look like it should"
-    assert expectedOutputSentenceContainingUnclear in (transcriptionForThisSpeaker[2]).loc[
-      22, "transcript"], "Output sentence does not contain unclear word"
-    assert expectedOutputSentenceContainingDeletion in (transcriptionForThisSpeaker[2]).loc[
-      547, "transcript"], "Output sentence does not containg deletion"
+
+    transcript = (transcriptionForThisSpeaker[2])
+
+    assert expectedOutputSentenceContainingPauseAndVocal == transcript[
+      transcript.Filename == "d1007-T5"].iloc[0]["transcript"], "Output sentence does not look like it should"
+    assert expectedOutputSentenceContainingUnclear in transcript[
+      transcript.Filename == "d1007-T40"].iloc[0]["transcript"], "Output sentence does not contain unclear word"
+    assert expectedOutputSentenceContainingDeletion in transcript[
+      transcript.Filename == "d1007-T977"].iloc[0]["transcript"], "Output sentence does not containg deletion"
+
+    assert expectedOutputSentenceContainingGap not in set(
+        (transcriptionForThisSpeaker[2])["Filename"]), "Should not contain known sentence with <gap> tag"
