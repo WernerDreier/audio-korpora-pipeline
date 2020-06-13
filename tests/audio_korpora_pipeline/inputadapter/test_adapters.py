@@ -145,7 +145,7 @@ class TestArchimobAdapter:
     config_logging(config)
     adapter = ArchimobAdapter(config)
     fileToConvert1 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1007.xml")
-    fileToConvert2 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1044.xml")
+    fileToConvert2 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1082_2.xml")
 
     # when
     extraction = adapter._extract([fileToConvert1, fileToConvert2])

@@ -452,8 +452,8 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     try:
       tree = ET.parse(xmlFile)
       root = tree.getroot()
-      de_data = pd.DataFrame(columns=['Filename', 'transcript'])
-      transcriptionForSpeaker = pd.DataFrame(columns=de_data.columns)
+      ch_datacolumns = pd.DataFrame(columns=['Filename', 'transcript'])
+      transcriptionForSpeaker = pd.DataFrame(columns=ch_datacolumns.columns)
       tagsToIgnore = set([namespaceprefix + tag for tag in {"gap", "incident", "kinesic", "other"}])
 
       for utteranceTag in root.iter(namespaceprefix + 'u'):
@@ -490,6 +490,9 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
             continue
           transcriptionForSpeaker = transcriptionForSpeaker.append(
               {'Filename': filename, 'transcript': actualTranscript}, ignore_index=True)
+
+          transcriptionForSpeaker = self._cleanSpecialCaseWhereTwoSentencesPerFileExist(transcriptionForSpeaker)
+
         except Exception as e:
           self.logger.warn("Couldn't append single utterance for filename {}".format(filename), exc_info=e)
           continue
@@ -627,6 +630,24 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     speakerIds = set([speaker.writtenResource.actorRef for speaker in bundles])
     actors = [MediaSessionActor(speakerId, Sex.UNKNOWN, None) for speakerId in speakerIds]
     return MediaSessionActors(actors)
+
+  def _cleanSpecialCaseWhereTwoSentencesPerFileExist(self, transcriptionForSpeaker):
+    if transcriptionForSpeaker is None or len(transcriptionForSpeaker) < 2:
+      return transcriptionForSpeaker
+    lastFilename = transcriptionForSpeaker.iloc[-1]["Filename"]
+    filenameBefore = transcriptionForSpeaker.iloc[-2]["Filename"]
+    if lastFilename == filenameBefore:
+      lastTranscription = transcriptionForSpeaker.iloc[-1]["transcript"]
+      transcriptionBefore = transcriptionForSpeaker.iloc[-2]["transcript"]
+      newTranscript = transcriptionBefore + " " + lastTranscription
+      transcriptionForSpeaker.drop(transcriptionForSpeaker.tail(2).index, inplace=True)
+      transcriptionForSpeaker = transcriptionForSpeaker.append(
+          {'Filename': lastFilename, 'transcript': newTranscript}, ignore_index=True)
+      self.logger.info(
+          "Found a case {} where two sentences '{}' and '{}'  are within one audio-file, merging them together".format(
+            lastFilename,
+            transcriptionBefore, lastTranscription))
+    return transcriptionForSpeaker
 
 
 class CommonVoiceAdapter(Adapter):
