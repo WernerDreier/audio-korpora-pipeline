@@ -358,8 +358,8 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     return mediaSession
 
   def createMediaSession(self, bundles):
-    speakers = set([speaker.writtenResource.actorRef for speaker in bundles])
-    session = MediaSession(self.ADAPTERNAME, speakers, bundles)
+    actors = self._createMediaSessionActorsFromBundles(bundles)
+    session = MediaSession(self.ADAPTERNAME, actors, bundles)
     return session
 
   def createMediaAnnotationBundles(self, filesForMediaBundle):
@@ -622,6 +622,11 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
 
   def _speakerIdFromFullpath(self, fullpathFilename):
     return self._getFilenameWithoutExtension(fullpathFilename).split("_")[0]
+
+  def _createMediaSessionActorsFromBundles(self, bundles):
+    speakerIds = set([speaker.writtenResource.actorRef for speaker in bundles])
+    actors = [MediaSessionActor(speakerId, Sex.UNKNOWN, None) for speakerId in speakerIds]
+    return MediaSessionActors(actors)
 
 
 class CommonVoiceAdapter(Adapter):
