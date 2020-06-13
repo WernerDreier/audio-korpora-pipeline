@@ -599,11 +599,12 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       allTranscriptions.Filename = allTranscriptions.Filename.str.replace("-", "_")
 
     # Find all files that exist in both sets
+    # TODO: Performance not good for 70k files
     allMatchingTranscriptions = allTranscriptions[allTranscriptions.Filename.isin(existingMediaFiles)].copy()
     allMatchingTranscriptions["FullpathFilename"] = ""
+    allMatchingTranscriptions.set_index("Filename", inplace=True)
     for filenumber, existingFile in enumerate(existingMediaFiles):
-      allMatchingTranscriptions.loc[allMatchingTranscriptions["Filename"] == existingFile, "FullpathFilename"] = \
-        existingMediaFilesFullpath[filenumber]
+      allMatchingTranscriptions.loc[existingFile, "FullpathFilename"] = existingMediaFilesFullpath[filenumber]
 
     return allMatchingTranscriptions[["FullpathFilename", "transcript"]].copy()
 
