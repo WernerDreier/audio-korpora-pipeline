@@ -357,30 +357,30 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
 
+  def createMediaSession(self, bundles):
+    speakers = set([speaker.writtenResource.actorRef for speaker in bundles])
+    session = MediaSession(self.ADAPTERNAME, speakers, bundles)
+    return session
+
   def createMediaAnnotationBundles(self, filesForMediaBundle):
-    # TODO:
-    # get transcriptions per speaker
     allXmlOriginalTranscriptionFiles = self._archimobOriginalTranscriptionFiles(self._validateKorpusPath())
     transcriptionsPerSpeaker = self._extract(allXmlOriginalTranscriptionFiles)
-    ## read their raw content
-    ## parse xml elements as specified (words and additions)
-    ## replace all chars that should be replaced at once
-    ## filter out empty transcriptions
-    ## filter out files, that have transcription but are not in filesForMediaBundle
-
-    pass
+    mediaFilesAndTranscription = self._onlyTranscriptionsWithMediaFilesAndViceVersa(transcriptionsPerSpeaker,
+                                                                                    filesForMediaBundle)
+    mediaAnnotationBundles = self._createActualMediaAnnotationBundles(mediaFilesAndTranscription)
+    return mediaAnnotationBundles
 
   def _fixOriginalDatasetFlawsIfNecessary(self, originalFiles):
     # As of Archimobe release V2 there are some minor flaws in the data, which are treated sequentially
-    if (self._fixForDuplicateWavsNecessary(originalFiles)):
+    if (self._fixForDuplicateWavs1063Necessary(originalFiles)):
       originalFiles = self._fixForDuplicateWavs1063(originalFiles)
 
-    if (self._fixForWrongFilenamesNecessary(originalFiles)):
+    if (self._fixForWrongFilenames1082Necessary(originalFiles)):
       originalFiles = self._fixForWrongFilenames1082(originalFiles)
 
     return originalFiles
 
-  def _fixForDuplicateWavsNecessary(self, originalFiles):
+  def _fixForDuplicateWavs1063Necessary(self, originalFiles):
     # This flaw is simply, that within 1063 there exists another folder 1063 containing all files again
     existingPathsForDoubled1063 = list(
         filter(lambda file: os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file, originalFiles))
@@ -396,7 +396,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     originalFiles = pathsWithout1063duplicates
     return originalFiles
 
-  def _fixForWrongFilenamesNecessary(self, originalFiles):
+  def _fixForWrongFilenames1082Necessary(self, originalFiles):
     regexForFindingWrongNames = "(^\d{4}_\d)(d\d{4}_.*\.wav)"  # like 1082_2d1082_2_TLI_3.wav
     onlyFilenames = [os.path.basename(filename) for filename in originalFiles]
     for filename in onlyFilenames:
@@ -440,7 +440,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       if (future.result()[0] == False):
         self.logger.warning("Couldnt extract metadata for file {}, removing from list".format(future.result()[1]))
       else:
-        transcriptionsPerSpeaker.extend(
+        transcriptionsPerSpeaker.append(
             (future.result()[1], future.result()[2]))  # tuple of original file and transcription dataframe
       self.logger.debug("Extracting metadata for speaker finished {}".format(future.result()))
     self.logger.debug("Finished metadata extraction for all {} xml files".format(len(allXmlOriginalTranscriptionFiles)))
@@ -578,6 +578,50 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     extractedWord = extractedWord.strip()
 
     return extractedWord
+
+  def _onlyTranscriptionsWithMediaFilesAndViceVersa(self, transcriptionsPerSpeaker, filesForMediaBundle):
+    if not transcriptionsPerSpeaker or not filesForMediaBundle:
+      return []
+
+    existingMediaFilesTuples = [(self._getFilenameWithoutExtension(mediafile), mediafile) for mediafile in
+                                filesForMediaBundle]
+    existingMediaFiles, existingMediaFilesFullpath = zip(*existingMediaFilesTuples)
+
+    # combine all transcriptions
+    allTranscriptions = pd.concat([transcription[1] for transcription in transcriptionsPerSpeaker])
+    if any("-" in filename for filename in allTranscriptions.Filename) \
+        and not any("-" in filename for filename in existingMediaFiles):
+      self.logger.debug(
+          "Found filenames with dash (-) instead of underscore (_) but only filenames with underscore. Automatically fixing this...")
+      allTranscriptions.Filename = allTranscriptions.Filename.str.replace("-", "_")
+
+    # Find all files that exist in both sets
+    allMatchingTranscriptions = allTranscriptions[allTranscriptions.Filename.isin(existingMediaFiles)].copy()
+    allMatchingTranscriptions["FullpathFilename"] = ""
+    for filenumber, existingFile in enumerate(existingMediaFiles):
+      allMatchingTranscriptions.loc[allMatchingTranscriptions["Filename"] == existingFile, "FullpathFilename"] = \
+        existingMediaFilesFullpath[filenumber]
+
+    return allMatchingTranscriptions[["FullpathFilename", "transcript"]].copy()
+
+  def _createActualMediaAnnotationBundles(self, mediaFilesAndTranscription):
+
+    bundles = []
+    for fileAndTranscription in mediaFilesAndTranscription.itertuples(index=False):
+      bundle = MediaAnnotationBundle(fileAndTranscription.FullpathFilename)
+      speakerId = self._speakerIdFromFullpath(fileAndTranscription.FullpathFilename)
+      bundle.setMediaFile(MediaFile(speakerId))
+      written_resource = WrittenResource(fileAndTranscription.transcript, speakerId, languageCode="CH",
+                                         annotationType=WrittenResource.DIETH_WITHOUT_GRAVIS)
+      bundle.setWrittenResource(written_resource)
+      bundles.append(bundle)
+
+    self.logger.debug("Created {} mediaAnnotationBundles out of {} transcriptions".format(len(bundles), len(
+        mediaFilesAndTranscription)))
+    return bundles
+
+  def _speakerIdFromFullpath(self, fullpathFilename):
+    return self._getFilenameWithoutExtension(fullpathFilename).split("_")[0]
 
 
 class CommonVoiceAdapter(Adapter):

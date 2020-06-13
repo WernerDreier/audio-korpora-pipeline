@@ -2,6 +2,8 @@ import glob
 import glob
 import os
 
+from pandas import DataFrame
+
 from audio_korpora_pipeline.inputadapter.adapters import UntranscribedVideoAdapter, ChJugendspracheAdapter, \
   ArchimobAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
@@ -62,7 +64,7 @@ class TestArchimobAdapter:
                            filelist))), "We start with some wrong folders in place"
 
     # when
-    assert adapter._fixForDuplicateWavsNecessary(
+    assert adapter._fixForDuplicateWavs1063Necessary(
         filelist), "Should return true, as we expect to have those files within"
 
   def test_filtering_1063flaw(self):
@@ -80,7 +82,7 @@ class TestArchimobAdapter:
     newFilelist = adapter._fixForDuplicateWavs1063(filelist)
 
     assert (len(newFilelist) < len(filelist)), "It should have filtered something"
-    assert adapter._fixForDuplicateWavsNecessary(
+    assert adapter._fixForDuplicateWavs1063Necessary(
         newFilelist) == False, "The new list should not contain any fixable wavs anymore"
 
   def test_fixing_1083flaw(self):
@@ -99,7 +101,7 @@ class TestArchimobAdapter:
 
     assert (len(newFilelist) == len(filelist)), "It should have same length entries"
     assert (newFilelist != filelist), "It should have changed something"
-    assert adapter._fixForWrongFilenamesNecessary(
+    assert adapter._fixForWrongFilenames1082Necessary(
         newFilelist) == False, "The new list should not contain any fixable wavs anymore"
 
   def test_full_transcription_of_one_file(self):
@@ -136,3 +138,57 @@ class TestArchimobAdapter:
 
     assert expectedOutputSentenceContainingGap not in set(
         (transcriptionForThisSpeaker[2])["Filename"]), "Should not contain known sentence with <gap> tag"
+
+  def test_full_transcription_of_two_files(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+    fileToConvert1 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1007.xml")
+    fileToConvert2 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1044.xml")
+
+    # when
+    extraction = adapter._extract([fileToConvert1, fileToConvert2])
+
+    # then
+    print(extraction)
+    assert len(extraction) == 2, "Should have two speaker tuples back"
+    assert len(extraction[0]) == 2, "Should have a tuple back"
+    assert extraction[0][0] == fileToConvert1 or extraction[0][
+      0] == fileToConvert2, "Should have file one or two set as origin"
+    assert type(extraction[0][1]) == DataFrame, "Should have a frame bcak"
+    assert {'Filename', 'transcript'}.issubset(
+        extraction[0][1].columns), "Columns of frame should be filename and transcript"
+
+  def test_transcription_plus_other(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+    fileToConvert1 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1007.xml")
+    fileToConvert2 = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1044.xml")
+    filelist = set(adapter._getAllMediaFilesInBasepath(adapter._validateWorkdir(),
+                                                       {".wav"}))  # assuming wav generation was done properly
+    transcriptions = adapter._extract([fileToConvert1, fileToConvert2])  # assuming this works as expected
+
+    # when
+    versa = adapter._onlyTranscriptionsWithMediaFilesAndViceVersa(transcriptions, filelist)
+    bundles = adapter._createActualMediaAnnotationBundles(versa)
+
+    # then
+    assert {'FullpathFilename', 'transcript'}.issubset(
+        versa.columns), "Columns of frame should be FilenameFullpath and transcript"
+
+    print(bundles)
+
+  def test_integration_test_archimob_input(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+
+    # when
+    mediaSession = adapter.toMetamodel()
+
+    # then
+    print(mediaSession)
