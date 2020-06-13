@@ -577,7 +577,8 @@ class OpenSeq2SeqAdapter(FairseqWav2VecAdapter):
             self.logger.debug("Skipping file {} for metadata as it could not successfully be copied before".format(
                 mediaAnnotationBundle.identifier))
             continue
-          fullpathFilename = mediaAnnotationBundle.identifier
+          fullpathFilename = os.path.join(self._wav_file_path(),
+                                          self._getFilenameWithExtension(mediaAnnotationBundle.identifier))
           shortFilename = self._getFilenameWithExtension(fullpathFilename)
           dest = train_f
           filesize = os.path.getsize(fullpathFilename)

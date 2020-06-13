@@ -34,5 +34,5 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/WernerDreier/audio-korpora-pipeline.git',
-    version='0.9',
+    version='0.10-SNAPSHOT',
 )
