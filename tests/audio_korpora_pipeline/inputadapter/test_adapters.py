@@ -101,3 +101,31 @@ class TestArchimobAdapter:
     assert (newFilelist != filelist), "It should have changed something"
     assert adapter._fixForWrongFilenamesNecessary(
         newFilelist) == False, "The new list should not contain any fixable wavs anymore"
+
+  def test_full_transcription_of_one_file(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = ArchimobAdapter(config)
+    fileToConvert = os.path.join(adapter._validateKorpusPath(), "Archimob_Release_2", "1007.xml")
+
+    expectedOutputSentenceContainingPauseAndVocal = "#ehm s ich bin am sächsezwänzgischte jänner nünzehundertzwölf @ gibore"
+    expectedOutputSentenceContainingUnclear = "maitschi und de"
+    expectedOutputSentenceContainingDeletion = "de he det hend"
+
+    # when
+    transcriptionForThisSpeaker = adapter._extractSingleXmlFileThread(fileToConvert)
+
+    # then
+    assert len(
+        transcriptionForThisSpeaker) == 3, "Format should be: result(bool), filename(str), transcriptions(dataframe)"
+    assert transcriptionForThisSpeaker[0] == True, "Should have successfully parsed"
+    assert transcriptionForThisSpeaker[1] == fileToConvert, "Filename should be the same as inputted"
+    assert "chönd sii" == (transcriptionForThisSpeaker[2]).loc[
+      0, "transcript"], "Some example for correct transcription"
+    assert expectedOutputSentenceContainingPauseAndVocal == (transcriptionForThisSpeaker[2]).loc[
+      5, "transcript"], "Output sentence does not look like it should"
+    assert expectedOutputSentenceContainingUnclear in (transcriptionForThisSpeaker[2]).loc[
+      22, "transcript"], "Output sentence does not contain unclear word"
+    assert expectedOutputSentenceContainingDeletion in (transcriptionForThisSpeaker[2]).loc[
+      547, "transcript"], "Output sentence does not containg deletion"

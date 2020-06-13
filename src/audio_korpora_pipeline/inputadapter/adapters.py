@@ -2,6 +2,7 @@ import concurrent
 import os
 import re
 import shutil
+import xml.etree.ElementTree as ET  # TODO do we have this as requirement?
 from concurrent.futures import as_completed
 from concurrent.futures._base import as_completed
 from pathlib import Path
@@ -313,6 +314,20 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
+  def _transcription_pause_tag_symbol(self):
+    symbol = self.config['archimob_input_adapter']['transcription_pause_tag_symbol']
+    if not symbol:
+      self.logger.warn("No symbol for transcription pause tag configured, falling back to default, which is '@'-Symbol")
+      symbol = '@'
+    return symbol
+
+  def _transcription_vocal_tag_symbol(self):
+    symbol = self.config['archimob_input_adapter']['transcription_vocal_tag_symbol']
+    if not symbol:
+      self.logger.warn("No symbol for transcription pause tag configured, falling back to default, which is '#'-Symbol")
+      symbol = '#'
+    return symbol
+
   def _validateWorkdir(self):
     workdir = self.config['global']['workdir']
     if not os.path.isdir(workdir):
@@ -341,6 +356,19 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     mediaAnnotationbundles = self.createMediaAnnotationBundles(filesForMediaBundle)
     mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
+
+  def createMediaAnnotationBundles(self, filesForMediaBundle):
+    # TODO:
+    # get transcriptions per speaker
+    allXmlOriginalTranscriptionFiles = self._archimobOriginalTranscriptionFiles(self._validateKorpusPath())
+    transcriptionsPerSpeaker = self._extract(allXmlOriginalTranscriptionFiles)
+    ## read their raw content
+    ## parse xml elements as specified (words and additions)
+    ## replace all chars that should be replaced at once
+    ## filter out empty transcriptions
+    ## filter out files, that have transcription but are not in filesForMediaBundle
+
+    pass
 
   def _fixOriginalDatasetFlawsIfNecessary(self, originalFiles):
     # As of Archimobe release V2 there are some minor flaws in the data, which are treated sequentially
@@ -396,6 +424,159 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
               exc_info=inst)
         fixedFiles.remove(filename)
     return fixedFiles
+
+  def _archimobOriginalTranscriptionFiles(self, path):
+    xmlOriginalFiles = list(Path(path).glob("**/*.xml"))
+    self.logger.debug("Found {} original xml files for archimob".format(len(xmlOriginalFiles)))
+    return xmlOriginalFiles
+
+  def _extract(self, allXmlOriginalTranscriptionFiles):
+    transcriptionsPerSpeaker = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(allXmlOriginalTranscriptionFiles):
+        futures.append(executor.submit(self._extractSingleXmlFileThread, file))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt extract metadata for file {}, removing from list".format(future.result()[1]))
+      else:
+        transcriptionsPerSpeaker.extend(
+            (future.result()[1], future.result()[2]))  # tuple of original file and transcription dataframe
+      self.logger.debug("Extracting metadata for speaker finished {}".format(future.result()))
+    self.logger.debug("Finished metadata extraction for all {} xml files".format(len(allXmlOriginalTranscriptionFiles)))
+    return transcriptionsPerSpeaker
+
+  def _extractSingleXmlFileThread(self, xmlFile):
+    namespaceprefix = "{http://www.tei-c.org/ns/1.0}"
+
+    try:
+      tree = ET.parse(xmlFile)
+      root = tree.getroot()
+      de_data = pd.DataFrame(columns=['Filename', 'transcript'])
+      transcriptionForSpeaker = pd.DataFrame(columns=de_data.columns)
+      tagsToIgnore = {"gap", "incident", "kinesic", "other"}
+
+      for utteranceTag in root.iter(namespaceprefix + 'u'):
+        media = utteranceTag.attrib['start']
+        filename = media.split('#')[1]
+
+        ch_transcript = [""]
+        for element in utteranceTag:
+          extractedWord = ""
+          if (namespaceprefix + "w" == element.tag):
+            extractedWord = self._extractWordTag(element)
+          if (namespaceprefix + "pause" == element.tag):
+            extractedWord = self._extractPauseTag(element)
+          if (namespaceprefix + "vocal" == element.tag):
+            extractedWord = self._extractVocalTag(namespaceprefix, element)
+          if (namespaceprefix + "del" == element.tag):
+            extractedWord = self._extractDeletionTag(element)
+          if (namespaceprefix + "unclear" == element.tag):
+            extractedWord = self._extractUnclearTag(namespaceprefix, element)
+          if (element.tag in tagsToIgnore):
+            self.logger.debug("Found tag {} which is in ignore list, ignoring this node".format(element.tag))
+            continue
+
+          if (extractedWord):
+            cleanedWord = self._cleanExtractedWord(extractedWord)
+            if (cleanedWord):
+              ch_transcript.append(cleanedWord)
+
+        try:
+          actualTranscript = " ".join(ch_transcript).strip()
+          if (not actualTranscript or (self._transcription_pause_tag_symbol() == actualTranscript)):
+            self.logger.debug("Skipping empty transcription for filename {}".format(filename))
+            continue
+          transcriptionForSpeaker = transcriptionForSpeaker.append(
+              {'Filename': filename, 'transcript': actualTranscript}, ignore_index=True)
+        except Exception as e:
+          self.logger.warn("Couldn't append single utterance for filename {}".format(filename), exc_info=e)
+          continue
+
+      # writing is just for manual checking
+      transcriptionForSpeaker.to_csv(
+          os.path.join(self._getFullFilenameWithoutExtension(xmlFile) + "_transcript_CH.csv"),
+          header=True, index=False, encoding='utf-8')
+
+      return True, xmlFile, transcriptionForSpeaker
+
+    except Exception as e:
+      self.logger.warn("Couldn't extract metadata for xml file {}".format(xmlFile), exc_info=e)
+    return False, xmlFile, None
+
+  def _extractWordTag(self, element):
+    return element.text
+
+  def _extractPauseTag(self, element):
+    return self._transcription_pause_tag_symbol()
+
+  def _extractVocalTag(self, namespaceprefix, element):
+    desc = element.find(namespaceprefix + "desc")
+    if desc is not None:
+      return self._transcription_vocal_tag_symbol() + desc.text
+    return ""
+
+  def _extractDeletionTag(self, element):
+    truncatedTextWithPotentialSlash = element.text
+    if truncatedTextWithPotentialSlash:
+      truncatedText = truncatedTextWithPotentialSlash.replace("/", "")
+      return truncatedText
+    return ""
+
+  def _extractUnclearTag(self, namespaceprefix, element):
+    if element is not None:
+      wordsWithinUnclearTag = element.findall(namespaceprefix + 'w')
+      unclearText = []
+      for word in wordsWithinUnclearTag:
+        unclearText.append(word.text)
+      return " ".join(unclearText)
+    return ""
+
+  def _cleanExtractedWord(self, extractedWord):
+    # replace all tokens with gravis with their counterpart    
+    # remove all chars not in allowed list
+    # Note: q,x and y are not allowed, as thos are not existing within transcription of archimob!
+    allowed_chars = {
+      'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'z',
+      'ä', 'ö', 'ü',
+      ' '
+    }
+    allowed_chars.add(self._transcription_pause_tag_symbol())
+    allowed_chars.add(self._transcription_vocal_tag_symbol())
+    whitespace_regex = re.compile(r'[ \t]+')
+
+    extractedWord = extractedWord.lower()
+    extractedWord = extractedWord.replace('á', 'a')
+    extractedWord = extractedWord.replace('à', 'a')
+    extractedWord = extractedWord.replace('â', 'a')
+    extractedWord = extractedWord.replace('ç', 'c')
+    extractedWord = extractedWord.replace('é', 'e')
+    extractedWord = extractedWord.replace('è', 'e')
+    extractedWord = extractedWord.replace('ê', 'e')
+    extractedWord = extractedWord.replace('í', 'i')
+    extractedWord = extractedWord.replace('ì', 'i')
+    extractedWord = extractedWord.replace('î', 'i')
+    extractedWord = extractedWord.replace('ñ', 'n')
+    extractedWord = extractedWord.replace('ó', 'o')
+    extractedWord = extractedWord.replace('ò', 'o')
+    extractedWord = extractedWord.replace('ô', 'o')
+    extractedWord = extractedWord.replace('ú', 'u')
+    extractedWord = extractedWord.replace('ù', 'u')
+    extractedWord = extractedWord.replace('ǜ', 'u')
+    extractedWord = extractedWord.replace('û', 'u')
+    extractedWord = extractedWord.replace('ș', 's')
+    extractedWord = extractedWord.replace('ş', 's')
+    extractedWord = extractedWord.replace('ß', 'ss')
+    extractedWord = extractedWord.replace('-', ' ')
+    # Those should not exist anymore, however, be safe
+    extractedWord = extractedWord.replace('–', ' ')
+    extractedWord = extractedWord.replace('/', ' ')
+    extractedWord = whitespace_regex.sub(' ', extractedWord)
+    extractedWord = ''.join([char for char in extractedWord if char in allowed_chars])
+    extractedWord = whitespace_regex.sub(' ', extractedWord)
+    extractedWord = extractedWord.strip()
+
+    return extractedWord
 
 
 class CommonVoiceAdapter(Adapter):
