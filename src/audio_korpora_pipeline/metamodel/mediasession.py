@@ -74,12 +74,13 @@ class Language(LoggingObject):
 
 class WrittenResource(LoggingObject):
   ORTHOGRAPHIC_TRANSCRIPTION = "Orthographic"
+  DIETH_WITHOUT_GRAVIS = "Dieth without gravis"
 
-  def __init__(self, transcription, actorRef, languageCode):
+  def __init__(self, transcription, actorRef, languageCode, annotationType="Orthograpic"):
     self.language = Language(languageCode)
     self.name = transcription
     self.actorRef = actorRef
-    self.annotationType = self.ORTHOGRAPHIC_TRANSCRIPTION
+    self.annotationType = annotationType
 
   def setActor(self, actorRef):
     self.actorRef = actorRef

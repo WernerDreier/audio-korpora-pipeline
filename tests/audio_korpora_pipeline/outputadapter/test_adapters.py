@@ -98,3 +98,17 @@ class TestFairseqWav2VecAdapter:
     f.write("I am not copied correctly.wav	121920\n")
     f.write("1 gegen 100-1 gegen 100 – Jahresrückblick mit Angélique Beldner-0943170628_chunk_00016.wav\t68123")
     f.close()
+
+
+class TestOpenSeq2SeqAdapter:
+  def test_small_integration_test_with_everything_already_in_place(self):
+    # given
+    # assuming test before has been run successfully and files are not deleted
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+
+    inputAdapters = _createInputAdapters(config, ExistingInputAdapter.ARCHIMOB.value)
+    outputAdapters = _createOutputAdapters(config, ExistingOutputAdapter.OPENSEQ2SEQ.value)
+    # when
+    metamodels = _transformInputsToMetamodel(inputAdapters)
+    outputs = _transformMetamodelsToOutputs(metamodels, outputAdapters)
