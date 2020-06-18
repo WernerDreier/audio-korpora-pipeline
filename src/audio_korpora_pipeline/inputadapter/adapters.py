@@ -1,5 +1,8 @@
 import concurrent
 import os
+import re
+import shutil
+import xml.etree.ElementTree as ET  # TODO do we have this as requirement?
 from concurrent.futures import as_completed
 from concurrent.futures._base import as_completed
 from pathlib import Path
@@ -297,7 +300,7 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
 
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
   """
-  ArchimobAdapter currently only converts audio to mono. Metadata-Conversion will be implemented in a later release
+  ArchimobAdapter
   """
   ADAPTERNAME = "Archimob"
 
@@ -311,6 +314,20 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
       raise IOError("Could not read korpus path" + korpus_path)
     return korpus_path
 
+  def _transcription_pause_tag_symbol(self):
+    symbol = self.config['archimob_input_adapter']['transcription_pause_tag_symbol']
+    if not symbol:
+      self.logger.warn("No symbol for transcription pause tag configured, falling back to default, which is '@'-Symbol")
+      symbol = '@'
+    return symbol
+
+  def _transcription_vocal_tag_symbol(self):
+    symbol = self.config['archimob_input_adapter']['transcription_vocal_tag_symbol']
+    if not symbol:
+      self.logger.warn("No symbol for transcription pause tag configured, falling back to default, which is '#'-Symbol")
+      symbol = '#'
+    return symbol
+
   def _validateWorkdir(self):
     workdir = self.config['global']['workdir']
     if not os.path.isdir(workdir):
@@ -321,6 +338,7 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
 
   def _determineArchimobFilesToProcess(self):
     originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".wav"}))
+    originalFiles = self._fixOriginalDatasetFlawsIfNecessary(originalFiles)
     alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateWorkdir(), {".wav"}))
     self.logger.debug("Got {} original archimob files to process".format(len(originalFiles)))
 
@@ -338,6 +356,299 @@ class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
     mediaAnnotationbundles = self.createMediaAnnotationBundles(filesForMediaBundle)
     mediaSession = self.createMediaSession(mediaAnnotationbundles)
     return mediaSession
+
+  def createMediaSession(self, bundles):
+    actors = self._createMediaSessionActorsFromBundles(bundles)
+    session = MediaSession(self.ADAPTERNAME, actors, bundles)
+    return session
+
+  def createMediaAnnotationBundles(self, filesForMediaBundle):
+    allXmlOriginalTranscriptionFiles = self._archimobOriginalTranscriptionFiles(self._validateKorpusPath())
+    transcriptionsPerSpeaker = self._extract(allXmlOriginalTranscriptionFiles)
+    mediaFilesAndTranscription = self._onlyTranscriptionsWithMediaFilesAndViceVersa(transcriptionsPerSpeaker,
+                                                                                    filesForMediaBundle)
+    mediaAnnotationBundles = self._createActualMediaAnnotationBundles(mediaFilesAndTranscription)
+    return mediaAnnotationBundles
+
+  def _fixOriginalDatasetFlawsIfNecessary(self, originalFiles):
+    # As of Archimobe release V2 there are some minor flaws in the data, which are treated sequentially
+    if (self._fixForDuplicateWavs1063Necessary(originalFiles)):
+      originalFiles = self._fixForDuplicateWavs1063(originalFiles)
+
+    if (self._fixForWrongFilenames1082Necessary(originalFiles)):
+      originalFiles = self._fixForWrongFilenames1082(originalFiles)
+
+    return originalFiles
+
+  def _fixForDuplicateWavs1063Necessary(self, originalFiles):
+    # This flaw is simply, that within 1063 there exists another folder 1063 containing all files again
+    existingPathsForDoubled1063 = list(
+        filter(lambda file: os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file, originalFiles))
+    fixNecessary = len(existingPathsForDoubled1063) > 0
+    self.logger.info("Found {} files of speaker 1063 which are duplicates. They will be ignored".format(
+        len(existingPathsForDoubled1063)))
+    return fixNecessary
+
+  def _fixForDuplicateWavs1063(self, originalFiles):
+    # fix is simply by removing the files in question from list
+    pathsWithout1063duplicates = list(
+        filter(lambda file: not (os.path.sep + "1063" + os.path.sep + "1063" + os.path.sep in file), originalFiles))
+    originalFiles = pathsWithout1063duplicates
+    return originalFiles
+
+  def _fixForWrongFilenames1082Necessary(self, originalFiles):
+    regexForFindingWrongNames = "(^\d{4}_\d)(d\d{4}_.*\.wav)"  # like 1082_2d1082_2_TLI_3.wav
+    onlyFilenames = [os.path.basename(filename) for filename in originalFiles]
+    for filename in onlyFilenames:
+      m = re.search(regexForFindingWrongNames, filename)
+      if (not (m is None)):
+        return True
+    return False
+
+  def _fixForWrongFilenames1082(self, originalFiles):
+    fixedFiles = originalFiles.copy()
+    regexForFindingWrongFullpaths = "(.*\\" + os.path.sep + ")(\d{4}_\d)(d\d{4}_.*\.wav)"  # like /home/somebody/files/1082/1082_2d1082_2_TLI_3.wav
+    for filename in originalFiles:
+      m = re.search(regexForFindingWrongFullpaths, filename)
+      if (not (m is None)):
+        newFilename = m.group(1) + m.group(3)
+        self.logger.debug(
+            "Fix 1082: Renaming file {} from {} to {}".format(m.group(2) + m.group(3), filename, newFilename))
+        try:
+          shutil.move(filename, newFilename)
+          fixedFiles.append(newFilename)
+        except Exception as inst:
+          self.logger.warn(
+              "Could not move file {} to {}, skipping and just removing from usable filenames".format(filename,
+                                                                                                      newFilename),
+              exc_info=inst)
+        fixedFiles.remove(filename)
+    return fixedFiles
+
+  def _archimobOriginalTranscriptionFiles(self, path):
+    xmlOriginalFiles = list(Path(path).glob("**/*.xml"))
+    self.logger.debug("Found {} original xml files for archimob".format(len(xmlOriginalFiles)))
+    return xmlOriginalFiles
+
+  def _extract(self, allXmlOriginalTranscriptionFiles):
+    transcriptionsPerSpeaker = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+      futures = []
+      for filenumber, file in enumerate(allXmlOriginalTranscriptionFiles):
+        futures.append(executor.submit(self._extractSingleXmlFileThread, file))
+    for future in as_completed(futures):
+      if (future.result()[0] == False):
+        self.logger.warning("Couldnt extract metadata for file {}, removing from list".format(future.result()[1]))
+      else:
+        transcriptionsPerSpeaker.append(
+            (future.result()[1], future.result()[2]))  # tuple of original file and transcription dataframe
+      self.logger.debug("Extracting metadata for speaker finished {}".format(future.result()))
+    self.logger.debug("Finished metadata extraction for all {} xml files".format(len(allXmlOriginalTranscriptionFiles)))
+    return transcriptionsPerSpeaker
+
+  def _extractSingleXmlFileThread(self, xmlFile):
+    namespaceprefix = "{http://www.tei-c.org/ns/1.0}"
+
+    try:
+      tree = ET.parse(xmlFile)
+      root = tree.getroot()
+      ch_datacolumns = pd.DataFrame(columns=['Filename', 'transcript'])
+      transcriptionForSpeaker = pd.DataFrame(columns=ch_datacolumns.columns)
+      tagsToIgnore = set([namespaceprefix + tag for tag in {"gap", "incident", "kinesic", "other"}])
+
+      for utteranceTag in root.iter(namespaceprefix + 'u'):
+        media = utteranceTag.attrib['start']
+        filename = media.split('#')[1]
+
+        ch_transcript = [""]
+        for element in utteranceTag:
+          extractedWord = ""
+          if (namespaceprefix + "w" == element.tag):
+            extractedWord = self._extractWordTag(element)
+          if (namespaceprefix + "pause" == element.tag):
+            extractedWord = self._extractPauseTag(element)
+          if (namespaceprefix + "vocal" == element.tag):
+            extractedWord = self._extractVocalTag(namespaceprefix, element)
+          if (namespaceprefix + "del" == element.tag):
+            extractedWord = self._extractDeletionTag(element)
+          if (namespaceprefix + "unclear" == element.tag):
+            extractedWord = self._extractUnclearTag(namespaceprefix, element)
+          if (element.tag in tagsToIgnore):
+            self.logger.debug(
+                "Found tag {} which is in ignore list, ignoring the whole utterance {}".format(element.tag, filename))
+            break
+
+          if (extractedWord):
+            cleanedWord = self._cleanExtractedWord(extractedWord)
+            if (cleanedWord):
+              ch_transcript.append(cleanedWord)
+
+        try:
+          actualTranscript = " ".join(ch_transcript).strip()
+          if (not actualTranscript or (self._transcription_pause_tag_symbol() == actualTranscript)):
+            self.logger.debug("Skipping empty transcription for filename {}".format(filename))
+            continue
+          transcriptionForSpeaker = transcriptionForSpeaker.append(
+              {'Filename': filename, 'transcript': actualTranscript}, ignore_index=True)
+
+          transcriptionForSpeaker = self._cleanSpecialCaseWhereTwoSentencesPerFileExist(transcriptionForSpeaker)
+
+        except Exception as e:
+          self.logger.warn("Couldn't append single utterance for filename {}".format(filename), exc_info=e)
+          continue
+
+      # writing is just for manual checking
+      transcriptionForSpeaker.to_csv(
+          os.path.join(self._getFullFilenameWithoutExtension(xmlFile) + "_transcript_CH.csv"),
+          header=True, index=False, encoding='utf-8')
+
+      return True, xmlFile, transcriptionForSpeaker
+
+    except Exception as e:
+      self.logger.warn("Couldn't extract metadata for xml file {}".format(xmlFile), exc_info=e)
+    return False, xmlFile, None
+
+  def _extractWordTag(self, element):
+    return element.text
+
+  def _extractPauseTag(self, element):
+    return self._transcription_pause_tag_symbol()
+
+  def _extractVocalTag(self, namespaceprefix, element):
+    desc = element.find(namespaceprefix + "desc")
+    if desc is not None:
+      return self._transcription_vocal_tag_symbol() + desc.text
+    return ""
+
+  def _extractDeletionTag(self, element):
+    truncatedTextWithPotentialSlash = element.text
+    if truncatedTextWithPotentialSlash:
+      truncatedText = truncatedTextWithPotentialSlash.replace("/", "")
+      return truncatedText
+    return ""
+
+  def _extractUnclearTag(self, namespaceprefix, element):
+    if element is not None:
+      wordsWithinUnclearTag = element.findall(namespaceprefix + 'w')
+      unclearText = []
+      for word in wordsWithinUnclearTag:
+        unclearText.append(word.text)
+      return " ".join(unclearText)
+    return ""
+
+  def _cleanExtractedWord(self, extractedWord):
+    # replace all tokens with gravis with their counterpart    
+    # remove all chars not in allowed list
+    # Note: q,x and y are not allowed, as thos are not existing within transcription of archimob!
+    allowed_chars = {
+      'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'z',
+      'ä', 'ö', 'ü',
+      ' '
+    }
+    allowed_chars.add(self._transcription_pause_tag_symbol())
+    allowed_chars.add(self._transcription_vocal_tag_symbol())
+    whitespace_regex = re.compile(r'[ \t]+')
+
+    extractedWord = extractedWord.lower()
+    extractedWord = extractedWord.replace('á', 'a')
+    extractedWord = extractedWord.replace('à', 'a')
+    extractedWord = extractedWord.replace('â', 'a')
+    extractedWord = extractedWord.replace('ç', 'c')
+    extractedWord = extractedWord.replace('é', 'e')
+    extractedWord = extractedWord.replace('è', 'e')
+    extractedWord = extractedWord.replace('ê', 'e')
+    extractedWord = extractedWord.replace('í', 'i')
+    extractedWord = extractedWord.replace('ì', 'i')
+    extractedWord = extractedWord.replace('î', 'i')
+    extractedWord = extractedWord.replace('ñ', 'n')
+    extractedWord = extractedWord.replace('ó', 'o')
+    extractedWord = extractedWord.replace('ò', 'o')
+    extractedWord = extractedWord.replace('ô', 'o')
+    extractedWord = extractedWord.replace('ú', 'u')
+    extractedWord = extractedWord.replace('ù', 'u')
+    extractedWord = extractedWord.replace('ǜ', 'u')
+    extractedWord = extractedWord.replace('û', 'u')
+    extractedWord = extractedWord.replace('ș', 's')
+    extractedWord = extractedWord.replace('ş', 's')
+    extractedWord = extractedWord.replace('ß', 'ss')
+    extractedWord = extractedWord.replace('-', ' ')
+    # Those should not exist anymore, however, be safe
+    extractedWord = extractedWord.replace('–', ' ')
+    extractedWord = extractedWord.replace('/', ' ')
+    extractedWord = whitespace_regex.sub(' ', extractedWord)
+    extractedWord = ''.join([char for char in extractedWord if char in allowed_chars])
+    extractedWord = whitespace_regex.sub(' ', extractedWord)
+    extractedWord = extractedWord.strip()
+
+    return extractedWord
+
+  def _onlyTranscriptionsWithMediaFilesAndViceVersa(self, transcriptionsPerSpeaker, filesForMediaBundle):
+    if not transcriptionsPerSpeaker or not filesForMediaBundle:
+      return []
+
+    existingMediaFilesTuples = [(self._getFilenameWithoutExtension(mediafile), mediafile) for mediafile in
+                                filesForMediaBundle]
+    existingMediaFiles, existingMediaFilesFullpath = zip(*existingMediaFilesTuples)
+
+    # combine all transcriptions
+    allTranscriptions = pd.concat([transcription[1] for transcription in transcriptionsPerSpeaker])
+    if any("-" in filename for filename in allTranscriptions.Filename) \
+        and not any("-" in filename for filename in existingMediaFiles):
+      self.logger.debug(
+          "Found filenames with dash (-) instead of underscore (_) but only filenames with underscore. Automatically fixing this...")
+      allTranscriptions.Filename = allTranscriptions.Filename.str.replace("-", "_")
+
+    # Find all files that exist in both sets
+    # TODO: Performance not good for 70k files
+    allMatchingTranscriptions = allTranscriptions[allTranscriptions.Filename.isin(existingMediaFiles)].copy()
+    allMatchingTranscriptions["FullpathFilename"] = ""
+    allMatchingTranscriptions.set_index("Filename", inplace=True)
+    for filenumber, existingFile in enumerate(existingMediaFiles):
+      allMatchingTranscriptions.loc[existingFile, "FullpathFilename"] = existingMediaFilesFullpath[filenumber]
+
+    return allMatchingTranscriptions[["FullpathFilename", "transcript"]].copy()
+
+  def _createActualMediaAnnotationBundles(self, mediaFilesAndTranscription):
+
+    bundles = []
+    for fileAndTranscription in mediaFilesAndTranscription.itertuples(index=False):
+      bundle = MediaAnnotationBundle(fileAndTranscription.FullpathFilename)
+      speakerId = self._speakerIdFromFullpath(fileAndTranscription.FullpathFilename)
+      bundle.setMediaFile(MediaFile(speakerId))
+      written_resource = WrittenResource(fileAndTranscription.transcript, speakerId, languageCode="CH",
+                                         annotationType=WrittenResource.DIETH_WITHOUT_GRAVIS)
+      bundle.setWrittenResource(written_resource)
+      bundles.append(bundle)
+
+    self.logger.debug("Created {} mediaAnnotationBundles out of {} transcriptions".format(len(bundles), len(
+        mediaFilesAndTranscription)))
+    return bundles
+
+  def _speakerIdFromFullpath(self, fullpathFilename):
+    return self._getFilenameWithoutExtension(fullpathFilename).split("_")[0]
+
+  def _createMediaSessionActorsFromBundles(self, bundles):
+    speakerIds = set([speaker.writtenResource.actorRef for speaker in bundles])
+    actors = [MediaSessionActor(speakerId, Sex.UNKNOWN, None) for speakerId in speakerIds]
+    return MediaSessionActors(actors)
+
+  def _cleanSpecialCaseWhereTwoSentencesPerFileExist(self, transcriptionForSpeaker):
+    if transcriptionForSpeaker is None or len(transcriptionForSpeaker) < 2:
+      return transcriptionForSpeaker
+    lastFilename = transcriptionForSpeaker.iloc[-1]["Filename"]
+    filenameBefore = transcriptionForSpeaker.iloc[-2]["Filename"]
+    if lastFilename == filenameBefore:
+      lastTranscription = transcriptionForSpeaker.iloc[-1]["transcript"]
+      transcriptionBefore = transcriptionForSpeaker.iloc[-2]["transcript"]
+      newTranscript = transcriptionBefore + " " + lastTranscription
+      transcriptionForSpeaker.drop(transcriptionForSpeaker.tail(2).index, inplace=True)
+      transcriptionForSpeaker = transcriptionForSpeaker.append(
+          {'Filename': lastFilename, 'transcript': newTranscript}, ignore_index=True)
+      self.logger.info(
+          "Found a case {} where two sentences '{}' and '{}'  are within one audio-file, merging them together".format(
+              lastFilename,
+              transcriptionBefore, lastTranscription))
+    return transcriptionForSpeaker
 
 
 class CommonVoiceAdapter(Adapter):

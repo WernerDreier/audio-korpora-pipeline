@@ -7,6 +7,8 @@ korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resou
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\ch_jugendsprache
 [archimob_input_adapter]
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\archimob
+transcription_pause_tag_symbol = @
+transcription_vocal_tag_symbol = #
 [common_voice_input_adapter]
 #korpus_path = ./tests/resources/korpora/common_voice
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\common_voice_new
@@ -19,6 +21,9 @@ combine_multiple_speakers_into_one_dataset = true
 [fairseq_wav2vec_output_adapter]
 output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\fairseqWav2Vec
 valid_percent = 0.1
+[openseq2seq_output_adapter]
+output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\openSeq2seq
+
 
 [logging]
 file = log.log
