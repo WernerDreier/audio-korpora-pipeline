@@ -12,6 +12,9 @@ transcription_vocal_tag_symbol = #
 [common_voice_input_adapter]
 #korpus_path = ./tests/resources/korpora/common_voice
 korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\common_voice_new
+[swisstext2020_low_ressource_task_input_adapter]
+korpus_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\swisstext2020
+
 
 [mailabs_output_adapter]
 output_path = C:\dev\datascience-repositories\audio_korpora_pipeline\tests\resources\korpora\output\mailabs

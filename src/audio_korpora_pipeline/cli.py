@@ -8,7 +8,7 @@ import sys
 
 from audio_korpora_pipeline.audio_korpora_pipeline import ExistingOutputAdapter, ExistingInputAdapter
 from audio_korpora_pipeline.inputadapter.adapters import CommonVoiceAdapter, UntranscribedVideoAdapter, \
-  ChJugendspracheAdapter, ArchimobAdapter
+  ChJugendspracheAdapter, ArchimobAdapter, SwissText2020LowresourceTask
 from audio_korpora_pipeline.outputadapter.adapters import LjSpeechAdapter, MailabsAdapter, FairseqWav2VecAdapter, \
   OpenSeq2SeqAdapter
 from audio_korpora_pipeline.utils import load_config, config_logging
@@ -32,6 +32,8 @@ def _createInputAdapters(config, inputs):
       adapters.append(ChJugendspracheAdapter(config))
     if (ExistingInputAdapter.ARCHIMOB.value == input):
       adapters.append(ArchimobAdapter(config))
+    if (ExistingInputAdapter.SWISSTEXT2020_LOW_RESOURCE.value == input):
+      adapters.append(SwissText2020LowresourceTask(config))
   return adapters
 
 

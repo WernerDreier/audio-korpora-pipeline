@@ -298,6 +298,48 @@ class ChJugendspracheAdapter(UntranscribedMediaSplittingAdapter):
     return korpus_path
 
 
+class SwissText2020LowresourceTask(UntranscribedMediaSplittingAdapter):
+  ADAPTERNAME = "SwissText2020"
+
+  def __init__(self, config):
+    super(SwissText2020LowresourceTask, self).__init__(config=config)
+    self.config = config
+
+  def toMetamodel(self):
+    self.logger.debug("SwissText2020 Korpus")
+    self.logger.info("This adapter currently only supports audio-conversion, no transcript is processed")
+    # convert audio to mono audio
+    filesToProcess, filesAlreadyProcessed = self._determineSwisstextFilesToConvertToMono()
+    filesSuccessfullyProcessed = self.convertMediaFilesToMonoAudio(filesToProcess, self._validateStagingMonoPath(),
+                                                                   self.ADAPTERNAME)
+    # we do not split, as we want to use original file content for this adapter
+    mediaBundleFiles = [] + filesSuccessfullyProcessed + filesAlreadyProcessed
+    mediaAnnotationbundles = self.createMediaAnnotationBundles(mediaBundleFiles)
+    mediaSession = self.createMediaSession(mediaAnnotationbundles)
+    return mediaSession
+
+  def _determineSwisstextFilesToConvertToMono(self):
+    originalFiles = set(self._getAllMediaFilesInBasepath(self._validateKorpusPath(), {".flac"}))
+    alreadyStagedFiles = set(self._getAllMediaFilesInBasepath(self._validateStagingMonoPath(), {".wav"}))
+    self.logger.debug("Got {} original SwissText2020 files to process".format(len(originalFiles)))
+
+    return self.determineFilesToConvertToMonoFromGivenLists(alreadyStagedFiles, originalFiles, self.ADAPTERNAME)
+
+  def _validateStagingMonoPath(self):
+    workdir = self.config['global']['workdir']
+    if not os.path.isdir(workdir):
+      raise IOError("Could not read workdir path" + workdir)
+    workdir = Path(workdir).joinpath("swisstext2020_low_ressource_task_staging_mono")
+    workdir.mkdir(parents=True, exist_ok=True)
+    return str(workdir)
+
+  def _validateKorpusPath(self):
+    korpus_path = self.config['swisstext2020_low_ressource_task_input_adapter']['korpus_path']
+    if not os.path.isdir(korpus_path):
+      raise IOError("Could not read korpus path" + korpus_path)
+    return korpus_path
+
+
 class ArchimobAdapter(UntranscribedMediaSplittingAdapter):
   """
   ArchimobAdapter

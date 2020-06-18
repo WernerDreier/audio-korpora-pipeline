@@ -5,7 +5,7 @@ import os
 from pandas import DataFrame
 
 from audio_korpora_pipeline.inputadapter.adapters import UntranscribedVideoAdapter, ChJugendspracheAdapter, \
-  ArchimobAdapter
+  ArchimobAdapter, SwissText2020LowresourceTask
 from audio_korpora_pipeline.utils import load_config, config_logging
 
 
@@ -186,6 +186,20 @@ class TestArchimobAdapter:
     config = load_config("config.cfg.sample")
     config_logging(config)
     adapter = ArchimobAdapter(config)
+
+    # when
+    mediaSession = adapter.toMetamodel()
+
+    # then
+    print(mediaSession)
+
+
+class TestSwisstext2020:
+  def test_integration_test_swisstext2020_input(self):
+    # given
+    config = load_config("config.cfg.sample")
+    config_logging(config)
+    adapter = SwissText2020LowresourceTask(config)
 
     # when
     mediaSession = adapter.toMetamodel()

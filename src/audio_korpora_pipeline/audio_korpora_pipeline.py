@@ -8,6 +8,7 @@ class ExistingInputAdapter(Enum):
   UNTRANSCRIBED_VIDEO = "UntranscribedVideo"
   CH_JUGENDSPRACHE = "ChJugendsprache"
   ARCHIMOB = "Archimob"
+  SWISSTEXT2020_LOW_RESOURCE = "SwissText2020"
 
 
 class ExistingOutputAdapter(Enum):
