@@ -19,7 +19,7 @@ As the software-package is not yet available on pypi build the wheel yourself:
 
 Then install like any wheel::
 
-        pip install dist/audio_korpora_pipeline-0.9-py2.py3-none-any.whl
+        pip install dist/audio_korpora_pipeline-0.10-py2.py3-none-any.whl
 
 Getting Started
 ===============
@@ -32,15 +32,55 @@ Example command::
 
         audio_korpora_pipeline -c config.cfg --input_corpora="CommonVoice" --output_corpora="LJSpeech"
 
-Another example Command is::
+Other Example: Create one Fairseq-formatted output from three different datasets::
 
         audio_korpora_pipeline -c config.cfg --input_corpora="Archimob,ChJugendsprache,UntranscribedVideo" --output_corpora="FairseqWav2Vec"
 
+
+Available Formats are:
+#############################
+
 .. _api:
 
-Available Adapter are found within::
+Full list of available adapter are found within::
 
          audio_korpora_pipeline.py
+
+InputAdapter
+-------------
+
+================== =====
+InputAdapter       Compatible with
+================== =====
+CommonVoice        https://voice.mozilla.org/de/datasets (version de_538h_2019-12-10)
+------------------ -----
+UntranscribedVideo (any video collection without transcription with file-ending mp4)
+------------------ -----
+ChJugendsprache     https://clarin.phonetik.uni-muenchen.de/BASRepository/ Datensatz "CHJugendsprache"
+------------------ -----
+Archimob           https://www.spur.uzh.ch/en/departments/research/textgroup/ArchiMob.html (V2)
+================== =====
+
+OutputAdapter
+-------------
+
+=============== =====
+OutputAdapter   Compatible with
+=============== =====
+M-AILABS        https://www.caito.de/2019/01/the-m-ailabs-speech-dataset/
+--------------- -----
+LJSpeech        https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
+--------------- -----
+FairseqWav2Vec  https://github.com/pytorch/fairseq/tree/v0.8.0
+--------------- -----
+OpenSeq2Seq     https://github.com/NVIDIA/OpenSeq2Seq/commit/61204b212cfe5c9ceda2be816b9052e9caf021a9
+=============== =====
+
+
+
+
+
+
 
 
 
