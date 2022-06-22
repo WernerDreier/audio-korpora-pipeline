@@ -4,7 +4,7 @@
 # Example:
 # numpy==1.13.3
 # scipy==1.0
-numpy==1.18.2
+numpy==1.22.0
 SoundFile==0.10.2
 librosa==0.7.0
 quantulum3==0.7.2
