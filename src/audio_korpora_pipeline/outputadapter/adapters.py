@@ -188,7 +188,12 @@ class LjSpeechAdapter(Adapter):
     :param writtenResource: written ressource should not be null
     :return: normalized text
     """
-    return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
+    if writtenResource.name == "":
+      return ""
+    try:
+      return parser.inline_parse_and_expand(writtenResource.name, lang='en_US')
+    except:
+      return writtenResource.name
 
   def _resampleAndCopyAudioFilesLjSpeech(self, mediaSession, foldernames):
     self.logger.debug("Starting prepare and move audiofiles LjSpeech")

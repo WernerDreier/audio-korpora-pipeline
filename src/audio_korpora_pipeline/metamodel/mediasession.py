@@ -78,8 +78,8 @@ class WrittenResource(LoggingObject):
 
   def __init__(self, transcription, actorRef, languageCode, annotationType="Orthograpic"):
     self.language = Language(languageCode)
-    self.name = transcription
-    self.actorRef = actorRef
+    self.name = str(transcription) #assuming must only be string
+    self.actorRef = str(actorRef)
     self.annotationType = annotationType
 
   def setActor(self, actorRef):
