@@ -6,7 +6,7 @@
 from setuptools import setup, find_packages
 
 requirements = ['SoundFile==0.10.2', 'librosa==0.7.0', 'quantulum3==0.7.2', 'pandas==0.25.1',
-                'ffmpeg-python==0.2.0', 'webrtcvad==2.0.10']
+                'ffmpeg-python==0.2.0', 'webrtcvad==2.0.10', 'numpy>=1.13.3, <=2.0.0','numba==0.48.0', 'resampy==0.3.1','scikit-learn==0.21.2','stemming==1.0.1']
 setup_requirements = ['pytest-runner']
 test_requirements = ['pytest']
 
